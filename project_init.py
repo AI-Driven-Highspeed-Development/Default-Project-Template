@@ -27,7 +27,7 @@ class ProjectInitializer:
             self.rc = RepositoryCloner(repo_urls, clone_dir)
         else:
             print("\n⚠️  No repositories to clone.")
-        
+            
         self.modules_placer = ModulesPlacer(clone_dir)
         modules_paths = self.modules_placer.place_modules()
         
@@ -151,13 +151,6 @@ class ModulesPlacer:
         self.clone_dir = clone_dir
         self.modules = []
     
-    def _format_error_for_table(self, error_msg: str, table_width: int) -> str:
-        """Format error message to fit in table, truncating if necessary."""
-        max_width = table_width - 4  # Account for borders and padding
-        if len(error_msg) <= max_width:
-            return error_msg
-        return error_msg[:max_width-3] + "..."
-    
     def place_modules(self) -> List[str]:
         """Place cloned modules into the appropriate directories."""
         modules_dir = []
@@ -176,8 +169,10 @@ class ModulesPlacer:
         print(f"{'='*60}")
         print(f"🔍 Found {len(modules_dir)} modules to place")
         
+        mtyr = ModulesInitYamlReader
+        
         for module_dir in modules_dir:
-            module_info = self.read_module_inityaml(module_dir)
+            module_info = mtyr.read_module_inityaml(module_dir)
             module_name = os.path.basename(module_dir)
             
             # Calculate dynamic width based on content
@@ -203,11 +198,13 @@ class ModulesPlacer:
             print(f"│ 📁 Processing: {module_name:<{table_width-17}} │")
             print(f"├{'─'*table_width}┤")
             
+            error_msg = None
+            
             if module_info:
                 folder_path = module_info.get('folder_path', module_dir)
                 if not os.path.exists(folder_path):
                     os.makedirs(folder_path)
-                    print(f"│ 📂 Created directory: {folder_path:<{table_width-23}} │")
+                    print(f"│ 📂 Created directory: {folder_path:<{table_width-24}} │")
                     
                 print(f"│ 🎯 Target: {folder_path:<{table_width-13}} │")
                 
@@ -216,7 +213,7 @@ class ModulesPlacer:
                 else:
                     try:
                         os.rename(module_dir, folder_path)
-                        print(f"│ ✅ Successfully moved to target location{' '*(table_width-43)} │")
+                        print(f"│ ✅ Successfully moved to target location{' '*(table_width-42)} │")
                         self.modules.append(folder_path)    
                     except OSError as e:
                         error_msg = f"❌ Error moving module: {str(e)}"
@@ -230,8 +227,11 @@ class ModulesPlacer:
 
         print(f"\n🎉 Module placement complete! Processed {len(self.modules)} modules.")
         return self.modules
+
+class ModulesInitYamlReader:
     
-    def read_module_inityaml(self, module_path):
+    @staticmethod
+    def read_module_inityaml(module_path):
         """Read the init.yaml file from a module directory."""
         init_yaml_path = os.path.join(module_path, 'init.yaml')
         if os.path.exists(init_yaml_path):
@@ -249,7 +249,18 @@ class ModulesPlacer:
                 min_width = max(len(yaml_error_msg), 55)
                 print(f"│ {yaml_error_msg:<{min_width}} │")
         else:
-            print(f"│ ℹ️  No init.yaml configuration found               │")
+            # Only print this message when called from ModulesPlacer context
+            # (when we're in a table context - we can detect this by checking call stack)
+            import inspect
+            caller_class = None
+            for frame_info in inspect.stack():
+                if 'self' in frame_info.frame.f_locals:
+                    caller_class = frame_info.frame.f_locals['self'].__class__.__name__
+                    break
+            
+            if caller_class == 'ModulesPlacer':
+                print(f"│ ℹ️  No init.yaml configuration found               │")
+        
         return None
 
 class InitYamlLoader(yaml.SafeLoader):
@@ -295,12 +306,13 @@ class InitYamlLoader(yaml.SafeLoader):
             return []
 
 class RepositoryCloner:
-    """A class to handle cloning repositories from a list of URLs."""
+    """A class to handle cloning repositories from a list of URLs with recursive dependency resolution."""
     
     def __init__(self, repo_urls: List[str] = [], clone_dir="clone_temp"):
         self.repo_urls = repo_urls
         self.clone_dir = clone_dir
         self.successful_clones = 0
+        self.processed_repos = set()  # Track processed repositories to avoid infinite loops
         
         # Create clone directory
         Path(self.clone_dir).mkdir(exist_ok=True)
@@ -308,7 +320,7 @@ class RepositoryCloner:
         
         # Clone repositories if URLs are provided
         if self.repo_urls:
-            self.clone_all_repositories()
+            self.clone_all_repositories_recursive()
     
     def _format_error_for_table(self, error_msg: str, table_width: int) -> str:
         """Format error message to fit in table, truncating if necessary."""
@@ -317,67 +329,138 @@ class RepositoryCloner:
             return error_msg
         return error_msg[:max_width-3] + "..."
     
-    def clone_all_repositories(self):
-        """Clone all repositories in the repo_urls list."""
+    def _normalize_repo_url(self, repo_url: str) -> str:
+        """Normalize repository URL to avoid duplicates with different formats."""
+        # Remove trailing .git and normalize case
+        return repo_url.lower().rstrip('.git')
+    
+    def _extract_dependencies_from_module(self, module_path: str) -> List[str]:
+        """Extract dependency URLs from a cloned module's init.yaml."""
+        module_info = ModulesInitYamlReader.read_module_inityaml(module_path)
+        if module_info and 'requirement' in module_info:
+            requirements = module_info['requirement']
+            if isinstance(requirements, list):
+                return requirements
+            elif isinstance(requirements, str):
+                return [requirements]
+        return []
+    
+    def clone_all_repositories_recursive(self):
+        """Clone all repositories recursively, including their dependencies."""
         print(f"\n{'='*60}")
-        print("⬇️  REPOSITORY CLONING")
+        print("⬇️  RECURSIVE REPOSITORY CLONING")
         print(f"{'='*60}")
-        print(f"🎯 Target: {len(self.repo_urls)} repositories to clone")
         
-        # Clone each repository
-        for i, repo_url in enumerate(self.repo_urls, 1):
-            # Extract repository name from URL for width calculation
-            repo_name = repo_url.split('/')[-1].replace('.git', '')
-            clone_path = os.path.join(self.clone_dir, repo_name)
+        # Start with initial repositories
+        repos_to_process = list(self.repo_urls)
+        all_discovered_repos = set(self._normalize_repo_url(url) for url in self.repo_urls)
+        
+        print(f"🎯 Starting with {len(repos_to_process)} initial repositories")
+        
+        level = 0
+        while repos_to_process:
+            level += 1
+            current_batch = repos_to_process.copy()
+            repos_to_process.clear()
             
-            # Calculate dynamic width based on content
-            content_lines = [
-                f"📦 CLONING REPOSITORY {i:2d}/{len(self.repo_urls):2d}",
-                f"🔗 Repository: {repo_name}",
-                f"🌐 URL: {repo_url}",
-                f"📍 Target: {clone_path}",
-                "⚠️  Repository already exists, skipping...",
-                "🔄 Cloning repository...",
-                "✅ Successfully cloned repository"
-            ]
+            print(f"\n{'='*60}")
+            print(f"📦 DEPENDENCY LEVEL {level}")
+            print(f"{'='*60}")
+            print(f"🔍 Processing {len(current_batch)} repositories at level {level}")
             
-            # Find the longest content line and add padding
-            max_content_width = max(len(line) for line in content_lines)
-            table_width = max(max_content_width + 4, 60)  # Minimum 60 chars, +4 for padding and borders
+            for i, repo_url in enumerate(current_batch, 1):
+                normalized_url = self._normalize_repo_url(repo_url)
+                
+                # Skip if already processed
+                if normalized_url in self.processed_repos:
+                    print(f"\n⏭️  Repository already processed: {repo_url}")
+                    continue
+                
+                # Mark as processed
+                self.processed_repos.add(normalized_url)
+                
+                # Extract repository name from URL for width calculation
+                repo_name = repo_url.split('/')[-1].replace('.git', '')
+                clone_path = os.path.join(self.clone_dir, repo_name)
+                
+                # Calculate dynamic width based on content
+                content_lines = [
+                    f"📦 CLONING REPOSITORY {i:2d}/{len(current_batch):2d} (Level {level})",
+                    f"🔗 Repository: {repo_name}",
+                    f"🌐 URL: {repo_url}",
+                    f"📍 Target: {clone_path}",
+                    "⚠️  Repository already exists, analyzing dependencies...",
+                    "🔄 Cloning repository...",
+                    "✅ Successfully cloned repository",
+                    "🔍 Scanning for dependencies..."
+                ]
+                
+                # Find the longest content line and add padding
+                max_content_width = max(len(line) for line in content_lines)
+                table_width = max(max_content_width + 4, 60)  # Minimum 60 chars, +4 for padding and borders
+                
+                print(f"\n┌{'─'*table_width}┐")
+                print(f"│ 📦 CLONING REPOSITORY {i:2d}/{len(current_batch):2d} (Level {level}){' '*(table_width-35-len(str(i))-len(str(len(current_batch)))-len(str(level)))} │")
+                print(f"├{'─'*table_width}┤")
+                
+                clone_success = self.clone_repository(repo_url, i, table_width, clone_path)
+                if clone_success:
+                    self.successful_clones += 1
+                
+                # Always check for dependencies, even if the repo already existed
+                print(f"│ 🔍 Scanning for dependencies...{' '*(table_width-32)} │")
+                dependencies = self._extract_dependencies_from_module(clone_path)
+                
+                if dependencies:
+                    print(f"│ 📋 Found {len(dependencies)} dependencies{' '*(table_width-29-len(str(len(dependencies))))} │")
+                    for j, dep_url in enumerate(dependencies, 1):
+                        normalized_dep = self._normalize_repo_url(dep_url)
+                        if normalized_dep not in all_discovered_repos:
+                            all_discovered_repos.add(normalized_dep)
+                            repos_to_process.append(dep_url)
+                            dep_name = dep_url.split('/')[-1].replace('.git', '')
+                            print(f"│   {j:2d}. ➕ New: {dep_name:<{table_width-15}} │")
+                        else:
+                            dep_name = dep_url.split('/')[-1].replace('.git', '')
+                            print(f"│   {j:2d}. ✓ Known: {dep_name:<{table_width-17}} │")
+                else:
+                    print(f"│ ℹ️  No dependencies found{' '*(table_width-25)} │")
+                
+                print(f"└{'─'*table_width}┘")
             
-            print(f"\n┌{'─'*table_width}┐")
-            print(f"│ 📦 CLONING REPOSITORY {i:2d}/{len(self.repo_urls):2d}{' '*(table_width-27-len(str(i))-len(str(len(self.repo_urls))))} │")
-            print(f"├{'─'*table_width}┤")
-            
-            if self.clone_repository(repo_url, i, table_width):
-                self.successful_clones += 1
+            if repos_to_process:
+                print(f"\n🔄 {len(repos_to_process)} new dependencies discovered, continuing to level {level+1}...")
+            else:
+                print(f"\n✅ No more dependencies found. Recursion complete!")
 
+        # Final summary
         print(f"\n{'='*60}")
-        print("📊 CLONING SUMMARY")
+        print("📊 RECURSIVE CLONING SUMMARY")
         print(f"{'='*60}")
-        print(f"✅ Successfully cloned: {self.successful_clones}/{len(self.repo_urls)} repositories")
-        
-        if self.successful_clones < len(self.repo_urls):
-            failed = len(self.repo_urls) - self.successful_clones
-            print(f"❌ Failed to clone: {failed} repositories")
+        print(f"🎯 Total repositories discovered: {len(all_discovered_repos)}")
+        print(f"✅ Successfully processed: {len(self.processed_repos)}")
+        print(f"📦 Successfully cloned: {self.successful_clones}")
+        print(f"📈 Dependency levels processed: {level}")
         
         return self.successful_clones
-
-    def clone_repository(self, repo_url, index=1, table_width=60):
+    
+    def clone_repository(self, repo_url, index=1, table_width=60, clone_path=None):
         try:
-            # Extract repository name from URL
-            repo_name = repo_url.split('/')[-1].replace('.git', '')
-            clone_path = os.path.join(self.clone_dir, repo_name)
+            # Extract repository name from URL if clone_path not provided
+            if clone_path is None:
+                repo_name = repo_url.split('/')[-1].replace('.git', '')
+                clone_path = os.path.join(self.clone_dir, repo_name)
+            else:
+                repo_name = os.path.basename(clone_path)
             
             print(f"│ 🔗 Repository: {repo_name:<{table_width-17}} │")
             print(f"│ 🌐 URL: {repo_url:<{table_width-10}} │")
             print(f"│ 📍 Target: {clone_path:<{table_width-13}} │")
             print(f"├{'─'*table_width}┤")
             
-            # Skip if already cloned
+            # Skip if already cloned (but still return True for dependency analysis)
             if os.path.exists(clone_path):
-                print(f"│ ⚠️  Repository already exists, skipping...{' '*(table_width-42)} │")
-                print(f"└{'─'*table_width}┘")
+                print(f"│ ⚠️  Repository already exists, analyzing dependencies...{' '*(table_width-51)} │")
                 return True
                 
             print(f"│ 🔄 Cloning repository...{' '*(table_width-26)} │")
@@ -388,20 +471,17 @@ class RepositoryCloner:
                 check=True
             )
             print(f"│ ✅ Successfully cloned repository{' '*(table_width-35)} │")
-            print(f"└{'─'*table_width}┘")
             return True
             
         except subprocess.CalledProcessError as e:
             error_msg = f"❌ Clone failed: {str(e.stderr)}"
             formatted_error = self._format_error_for_table(error_msg, table_width)
             print(f"│ {formatted_error:<{table_width-2}} │")
-            print(f"└{'─'*table_width}┘")
             return False
         except Exception as e:
             error_msg = f"❌ Unexpected error: {str(e)}"
             formatted_error = self._format_error_for_table(error_msg, table_width)
             print(f"│ {formatted_error:<{table_width-2}} │")
-            print(f"└{'─'*table_width}┘")
             return False
 
 if __name__ == "__main__":
