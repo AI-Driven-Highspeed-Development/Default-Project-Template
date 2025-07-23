@@ -400,7 +400,7 @@ class RepositoryCloner:
                 table_width = max(max_content_width + 4, 60)  # Minimum 60 chars, +4 for padding and borders
                 
                 print(f"\n┌{'─'*table_width}┐")
-                print(f"│ 📦 CLONING REPOSITORY {i:2d}/{len(current_batch):2d} (Level {level}){' '*(table_width-35-len(str(i))-len(str(len(current_batch)))-len(str(level)))} │")
+                print(f"│ 📦 CLONING REPOSITORY {i:2d}/{len(current_batch):2d} (Level {level}){' '*(table_width-36-len(str(i))-len(str(len(current_batch)))-len(str(level)))} │")
                 print(f"├{'─'*table_width}┤")
                 
                 clone_success = self.clone_repository(repo_url, i, table_width, clone_path)
@@ -408,11 +408,11 @@ class RepositoryCloner:
                     self.successful_clones += 1
                 
                 # Always check for dependencies, even if the repo already existed
-                print(f"│ 🔍 Scanning for dependencies...{' '*(table_width-32)} │")
+                print(f"│ 🔍 Scanning for dependencies...{' '*(table_width-33)} │")
                 dependencies = self._extract_dependencies_from_module(clone_path)
                 
                 if dependencies:
-                    print(f"│ 📋 Found {len(dependencies)} dependencies{' '*(table_width-29-len(str(len(dependencies))))} │")
+                    print(f"│ 📋 Found {len(dependencies)} dependencies{' '*(table_width-25-len(str(len(dependencies))))} │")
                     for j, dep_url in enumerate(dependencies, 1):
                         normalized_dep = self._normalize_repo_url(dep_url)
                         if normalized_dep not in all_discovered_repos:
@@ -424,7 +424,7 @@ class RepositoryCloner:
                             dep_name = dep_url.split('/')[-1].replace('.git', '')
                             print(f"│   {j:2d}. ✓ Known: {dep_name:<{table_width-17}} │")
                 else:
-                    print(f"│ ℹ️  No dependencies found{' '*(table_width-25)} │")
+                    print(f"│ ℹ️  No dependencies found{' '*(table_width-26)} │")
                 
                 print(f"└{'─'*table_width}┘")
             

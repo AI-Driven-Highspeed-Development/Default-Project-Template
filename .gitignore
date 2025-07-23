@@ -206,6 +206,12 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# ADHD Framework Temp Folders, always ignore
+clone_temp/
+
+# ADHD Framework Generated Folders
+#  Keep during template development
+#  Remove when the template is generated from the framework cli
 managers/
 utils/
 plugins/
