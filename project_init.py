@@ -412,7 +412,7 @@ class RepositoryCloner:
                 dependencies = self._extract_dependencies_from_module(clone_path)
                 
                 if dependencies:
-                    print(f"│ 📋 Found {len(dependencies)} dependencies{' '*(table_width-25-len(str(len(dependencies))))} │")
+                    print(f"│ 📋 Found {len(dependencies)} dependencies{' '*(table_width-24-len(str(len(dependencies))))} │")
                     for j, dep_url in enumerate(dependencies, 1):
                         normalized_dep = self._normalize_repo_url(dep_url)
                         if normalized_dep not in all_discovered_repos:
