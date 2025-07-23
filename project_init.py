@@ -164,19 +164,31 @@ class ModulesPlacer:
     def __init__(self, clone_dir="clone_temp"):
         self.clone_dir = clone_dir
         self.modules = []
+        
+    def move_contents(self, module_dir: str, target_dir: str):
+        """Move contents of module_dir into target_dir."""
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir, exist_ok=True)
+        
+        for item in os.listdir(module_dir):
+            src = os.path.join(module_dir, item)
+            dst = os.path.join(target_dir, item)
+            if os.path.isdir(src):
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+            else:
+                shutil.copy2(src, dst)
     
     def place_modules(self) -> List[str]:
         """Place cloned modules into the appropriate directories."""
-        modules_dir = []
-        
-        for dir in os.listdir(self.clone_dir):
-            full_path = os.path.join(self.clone_dir, dir)
-            if os.path.isdir(full_path):
-                modules_dir.append(full_path)
+        modules_dir = [
+            os.path.join(self.clone_dir, dir)
+            for dir in os.listdir(self.clone_dir)
+            if os.path.isdir(os.path.join(self.clone_dir, dir))
+        ]
                 
         if not modules_dir:
             print("⚠️  No modules found to place.")
-            return
+            return []
     
         print(f"\n{'='*60}")
         print("📦 MODULE PLACEMENT")
@@ -184,91 +196,101 @@ class ModulesPlacer:
         print(f"🔍 Found {len(modules_dir)} modules to place")
         
         for module_dir in modules_dir:
-            module_info = ModulesController.get_module_info_from_path(module_dir)
-            module_name = os.path.basename(module_dir)
-            
-            # Calculate dynamic width based on content
-            content_lines = [
-                f"📁 Processing: {module_name}",
-                "⚠️  Module already exists, skipping...",
-                "✅ Successfully moved to target location",
-                "⚠️  No init.yaml found, skipping module"
-            ]
-            
-            if module_info:
-                folder_path = module_info.folder_path
-                
-                content_lines.extend([
-                    f"🎯 Target directory: {folder_path}",
-                    f"📦 Version: {module_info.version}"
-                ])
-            
-            # Find the longest content line and add padding
-            max_content_width = max(len(line) for line in content_lines)
-            table_width = max(max_content_width + 4, 60)  # Minimum 60 chars, +4 for padding and borders
-            
-            print(f"\n┌{'─'*table_width}┐")
-            print(f"│ 📁 Processing: {module_name:<{table_width-17}} │")
-            print(f"├{'─'*table_width}┤")
-            
-            error_msg = None
-            
-            if module_info:
-                folder_path = module_info.folder_path
-                old_folder_exists = os.path.exists(folder_path)
-
-                if not old_folder_exists:
-                    os.makedirs(folder_path, exist_ok=True)
-                    print(f"│ 📂 Created directory: {folder_path:<{table_width-24}} │")
-                    
-                print(f"│ 🎯 Target: {folder_path:<{table_width-13}} │")
-                print(f"│ 📦 Version: {module_info.version:<{table_width-14}} │")
-                
-                # Check if module already exists and compare versions
-                if old_folder_exists:
-                    existing_module_info = ModulesController.get_module_info_from_path(folder_path)
-                    if existing_module_info:
-                        existing_version = existing_module_info.version
-                        new_version = module_info.version
-                        
-                        print(f"│ 🔍 Existing version: {existing_version:<{table_width-23}} │")
-                        print(f"│ 🆕 New version: {new_version:<{table_width-18}} │")
-                        
-                        # Simple version comparison (assumes semantic versioning)
-                        should_replace = self._should_replace_module(existing_version, new_version)
-                        
-                        if should_replace:
-                            print(f"│ 🔄 Replacing with newer version...{' '*(table_width-36)} │")
-                            try:
-                                import shutil
-                                shutil.rmtree(folder_path)
-                                shutil.move(module_dir, folder_path)
-                                print(f"│ ✅ Successfully replaced module{' '*(table_width-33)} │")
-                                self.modules.append(folder_path)
-                            except OSError as e:
-                                error_msg = f"❌ Error replacing module: {str(e)}"
-                        else:
-                            print(f"│ ⚠️  Keeping existing version (newer/same){' '*(table_width-41)} │")
-                    else:
-                        print(f"│ ⚠️  Module exists but no version info, skipping...{' '*(table_width-49)} │")
-                else:
-                    try:
-                        import shutil
-                        shutil.move(module_dir, folder_path)
-                        print(f"│ ✅ Successfully moved to target location{' '*(table_width-42)} │")
-                        self.modules.append(folder_path)    
-                    except OSError as e:
-                        error_msg = f"❌ Error moving module: {str(e)}"
-            else:
-                print(f"│ ⚠️  No init.yaml found, skipping module{' '*(table_width-39)} │")
-            
-            print(f"└{'─'*table_width}┘")
-
-            if error_msg:
-                print(error_msg)
+            self._process_module(module_dir)
 
         print(f"\n🎉 Module placement complete! Processed {len(self.modules)} modules.")
         return self.modules
+
+    def _process_module(self, module_dir: str):
+        """Process a single module for placement."""
+        module_info = ModulesController.get_module_info_from_path(module_dir)
+        module_name = os.path.basename(module_dir)
+        
+        # Calculate table width
+        table_width = self._calculate_table_width(module_name, module_info)
+        
+        print(f"\n┌{'─'*table_width}┐")
+        print(f"│ 📁 Processing: {module_name:<{table_width-17}} │")
+        print(f"├{'─'*table_width}┤")
+        
+        if not module_info:
+            print(f"│ ⚠️  No init.yaml found, skipping module{' '*(table_width-39)} │")
+            print(f"└{'─'*table_width}┘")
+            return
+            
+        folder_path = module_info.folder_path
+        self._handle_module_placement(module_dir, folder_path, module_info, table_width)
+        print(f"└{'─'*table_width}┘")
+
+    def _calculate_table_width(self, module_name: str, module_info) -> int:
+        """Calculate appropriate table width based on content."""
+        content_lines = [
+            f"📁 Processing: {module_name}",
+            "⚠️  Module already exists, skipping...",
+            "✅ Successfully moved to target location",
+            "⚠️  No init.yaml found, skipping module"
+        ]
+        
+        if module_info:
+            content_lines.extend([
+                f"🎯 Target directory: {module_info.folder_path}",
+                f"📦 Version: {module_info.version}"
+            ])
+        
+        max_content_width = max(len(line) for line in content_lines)
+        return max(max_content_width + 4, 60)
+
+    def _handle_module_placement(self, module_dir: str, folder_path: str, module_info, table_width: int):
+        """Handle the placement logic for a module."""
+        old_folder_exists = os.path.exists(folder_path)
+
+        if not old_folder_exists:
+            os.makedirs(folder_path, exist_ok=True)
+            print(f"│ 📂 Created directory: {folder_path:<{table_width-24}} │")
+            
+        print(f"│ 🎯 Target: {folder_path:<{table_width-13}} │")
+        print(f"│ 📦 Version: {module_info.version:<{table_width-14}} │")
+        
+        if old_folder_exists:
+            self._handle_existing_module(module_dir, folder_path, module_info, table_width)
+        else:
+            self._place_new_module(module_dir, folder_path, table_width)
+
+    def _handle_existing_module(self, module_dir: str, folder_path: str, module_info, table_width: int):
+        """Handle placement when module already exists."""
+        existing_module_info = ModulesController.get_module_info_from_path(folder_path)
+        
+        if not existing_module_info:
+            print(f"│ ⚠️  Module exists but no version info, skipping...{' '*(table_width-49)} │")
+            return
+            
+        existing_version = existing_module_info.version
+        new_version = module_info.version
+        
+        print(f"│ 🔍 Existing version: {existing_version:<{table_width-23}} │")
+        print(f"│ 🆕 New version: {new_version:<{table_width-18}} │")
+        
+        if self._should_replace_module(existing_version, new_version):
+            print(f"│ 🔄 Replacing with newer version...{' '*(table_width-36)} │")
+            try:
+                shutil.rmtree(folder_path)
+                os.makedirs(folder_path, exist_ok=True)
+                self.move_contents(module_dir, folder_path)
+                print(f"│ ✅ Successfully replaced module{' '*(table_width-33)} │")
+                self.modules.append(folder_path)
+            except OSError as e:
+                print(f"│ ❌ Error replacing module: {str(e):<{table_width-30}} │")
+        else:
+            print(f"│ ⚠️  Keeping existing version (newer/same){' '*(table_width-41)} │")
+
+    def _place_new_module(self, module_dir: str, folder_path: str, table_width: int):
+        """Place a new module."""
+        try:
+            self.move_contents(module_dir, folder_path)
+            print(f"│ ✅ Successfully moved to target location{' '*(table_width-42)} │")
+            self.modules.append(folder_path)    
+        except OSError as e:
+            print(f"│ ❌ Error moving module: {str(e):<{table_width-24}} │")
 
     def _should_replace_module(self, existing_version: str, new_version: str) -> bool:
         """
@@ -278,13 +300,10 @@ class ModulesPlacer:
         def parse_version(version_str: str) -> tuple:
             """Parse version string into tuple of integers for comparison."""
             try:
-                # Remove 'v' prefix if present and split by dots
                 clean_version = version_str.lower().lstrip('v')
                 parts = clean_version.split('.')
-                # Convert to integers, defaulting to 0 for missing parts
-                return tuple(int(part) for part in parts[:3])  # Take first 3 parts (major.minor.patch)
+                return tuple(int(part) for part in parts[:3])
             except (ValueError, AttributeError):
-                # If parsing fails, treat as version 0.0.0
                 return (0, 0, 0)
         
         existing_parsed = parse_version(existing_version)
