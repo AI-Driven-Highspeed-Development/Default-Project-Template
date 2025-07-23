@@ -128,6 +128,10 @@ class ModulesInitializer:
                     initialized = True
                 except subprocess.CalledProcessError as e:
                     print(f"   ❌ Error initializing {module_name}: {e}")
+                    print(f"   📋 Error details: {e.stderr if e.stderr else 'No error output'}")
+                    print(f"   📋 Return code: {e.returncode}")
+                    if e.stdout:
+                        print(f"   📋 Output: {e.stdout}")
                     uninitialized_modules.append(module_path)
             
             if not initialized and not has_init:
@@ -211,8 +215,9 @@ class ModulesPlacer:
             
             if module_info:
                 folder_path = module_info.folder_path
-                
-                if not os.path.exists(folder_path):
+                old_folder_exists = os.path.exists(folder_path)
+
+                if not old_folder_exists:
                     os.makedirs(folder_path, exist_ok=True)
                     print(f"│ 📂 Created directory: {folder_path:<{table_width-24}} │")
                     
@@ -220,13 +225,13 @@ class ModulesPlacer:
                 print(f"│ 📦 Version: {module_info.version:<{table_width-14}} │")
                 
                 # Check if module already exists and compare versions
-                if os.path.exists(folder_path):
+                if old_folder_exists:
                     existing_module_info = ModulesController.get_module_info_from_path(folder_path)
                     if existing_module_info:
                         existing_version = existing_module_info.version
                         new_version = module_info.version
                         
-                        print(f"│ 🔍 Existing version: {existing_version:<{table_width-22}} │")
+                        print(f"│ 🔍 Existing version: {existing_version:<{table_width-23}} │")
                         print(f"│ 🆕 New version: {new_version:<{table_width-18}} │")
                         
                         # Simple version comparison (assumes semantic versioning)
@@ -238,7 +243,7 @@ class ModulesPlacer:
                                 import shutil
                                 shutil.rmtree(folder_path)
                                 shutil.move(module_dir, folder_path)
-                                print(f"│ ✅ Successfully replaced module{' '*(table_width-34)} │")
+                                print(f"│ ✅ Successfully replaced module{' '*(table_width-33)} │")
                                 self.modules.append(folder_path)
                             except OSError as e:
                                 error_msg = f"❌ Error replacing module: {str(e)}"

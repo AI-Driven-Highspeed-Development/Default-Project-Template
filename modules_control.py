@@ -67,6 +67,8 @@ class ModulesController:
     @staticmethod
     def get_module_info_from_path(module_path: str) -> Optional[ModuleInfo]:
         """Get information about a specific module without scanning the entire project."""
+        if not os.path.exists(module_path):
+            return None
         # Create basic module info
         module_info = ModuleInfo(
             path=module_path,
