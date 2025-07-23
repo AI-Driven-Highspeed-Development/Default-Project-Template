@@ -51,6 +51,12 @@ class ProjectInitializer:
         print("   • Configure settings as needed")
         print("   • Start building your project!")
         print(f"{'='*60}")
+        print("📍 Navigation:")
+        print(f"   • If not in project directory: cd '{os.getcwd()}'")
+        print("🔄 Re-initialization:")
+        print("   • After changing init.yaml: python project_init.py")
+        print("   • To refresh existing project: python project_refresh.py")
+        print(f"{'='*60}")
 
 class ModulesInitializer:
     """A class to handle the initialization of modules."""
@@ -72,9 +78,13 @@ class ModulesInitializer:
         
         for module_path in self.modules:
             # Get module info from controller
-            module_info = all_modules_info.get(module_path, {})
-            module_name = module_info.get('name', os.path.basename(module_path))
-            module_type = module_info.get('type', '')
+            module_info = all_modules_info.get(module_path)
+            if not module_info:
+                # Fallback to static method if not in scanned modules
+                module_info = ModulesController.get_module_info_from_path(module_path)
+            
+            module_name = module_info.name if module_info else os.path.basename(module_path)
+            module_type = module_info.type if module_info else ''
             
             # Calculate dynamic width based on content
             content_lines = [
@@ -95,13 +105,13 @@ class ModulesInitializer:
             print(f"├{'─'*table_width}┤")
             
             print(f"│ 📁 Module: {module_name:<{table_width-13}} │")
-            if module_info.get('type'):
-                print(f"│ 📂 Type: {module_info['type']:<{table_width-11}} │")
+            if module_type:
+                print(f"│ 📂 Type: {module_type:<{table_width-11}} │")
             print(f"│ 📍 Path: {module_path:<{table_width-11}} │")
             print(f"└{'─'*table_width}┘")
             
             # Check for initialization capabilities
-            has_init = module_info.get('has_init', False)
+            has_init = module_info.has_init if module_info else False
             
             initialized = False
             
@@ -169,10 +179,8 @@ class ModulesPlacer:
         print(f"{'='*60}")
         print(f"🔍 Found {len(modules_dir)} modules to place")
         
-        mtyr = ModulesInitYamlReader
-        
         for module_dir in modules_dir:
-            module_info = mtyr.read_module_inityaml(module_dir)
+            module_info = ModulesController.get_module_info_from_path(module_dir)
             module_name = os.path.basename(module_dir)
             
             # Calculate dynamic width based on content
@@ -184,10 +192,11 @@ class ModulesPlacer:
             ]
             
             if module_info:
-                folder_path = module_info.get('folder_path', module_dir)
+                folder_path = module_info.folder_path
+                
                 content_lines.extend([
-                    f"📂 Created directory: {folder_path}",
-                    f"🎯 Target: {folder_path}"
+                    f"🎯 Target directory: {folder_path}",
+                    f"📦 Version: {module_info.version}"
                 ])
             
             # Find the longest content line and add padding
@@ -201,18 +210,46 @@ class ModulesPlacer:
             error_msg = None
             
             if module_info:
-                folder_path = module_info.get('folder_path', module_dir)
+                folder_path = module_info.folder_path
+                
                 if not os.path.exists(folder_path):
-                    os.makedirs(folder_path)
+                    os.makedirs(folder_path, exist_ok=True)
                     print(f"│ 📂 Created directory: {folder_path:<{table_width-24}} │")
                     
                 print(f"│ 🎯 Target: {folder_path:<{table_width-13}} │")
+                print(f"│ 📦 Version: {module_info.version:<{table_width-14}} │")
                 
-                if os.path.exists(os.path.join(folder_path, os.path.basename(module_dir))):
-                    print(f"│ ⚠️  Module already exists, skipping...{' '*(table_width-39)} │")
+                # Check if module already exists and compare versions
+                if os.path.exists(folder_path):
+                    existing_module_info = ModulesController.get_module_info_from_path(folder_path)
+                    if existing_module_info:
+                        existing_version = existing_module_info.version
+                        new_version = module_info.version
+                        
+                        print(f"│ 🔍 Existing version: {existing_version:<{table_width-22}} │")
+                        print(f"│ 🆕 New version: {new_version:<{table_width-18}} │")
+                        
+                        # Simple version comparison (assumes semantic versioning)
+                        should_replace = self._should_replace_module(existing_version, new_version)
+                        
+                        if should_replace:
+                            print(f"│ 🔄 Replacing with newer version...{' '*(table_width-36)} │")
+                            try:
+                                import shutil
+                                shutil.rmtree(folder_path)
+                                shutil.move(module_dir, folder_path)
+                                print(f"│ ✅ Successfully replaced module{' '*(table_width-34)} │")
+                                self.modules.append(folder_path)
+                            except OSError as e:
+                                error_msg = f"❌ Error replacing module: {str(e)}"
+                        else:
+                            print(f"│ ⚠️  Keeping existing version (newer/same){' '*(table_width-41)} │")
+                    else:
+                        print(f"│ ⚠️  Module exists but no version info, skipping...{' '*(table_width-49)} │")
                 else:
                     try:
-                        os.rename(module_dir, folder_path)
+                        import shutil
+                        shutil.move(module_dir, folder_path)
                         print(f"│ ✅ Successfully moved to target location{' '*(table_width-42)} │")
                         self.modules.append(folder_path)    
                     except OSError as e:
@@ -228,40 +265,27 @@ class ModulesPlacer:
         print(f"\n🎉 Module placement complete! Processed {len(self.modules)} modules.")
         return self.modules
 
-class ModulesInitYamlReader:
-    
-    @staticmethod
-    def read_module_inityaml(module_path):
-        """Read the init.yaml file from a module directory."""
-        init_yaml_path = os.path.join(module_path, 'init.yaml')
-        if os.path.exists(init_yaml_path):
+    def _should_replace_module(self, existing_version: str, new_version: str) -> bool:
+        """
+        Compare two version strings and determine if we should replace the existing module.
+        Returns True if new_version is greater than existing_version.
+        """
+        def parse_version(version_str: str) -> tuple:
+            """Parse version string into tuple of integers for comparison."""
             try:
-                with open(init_yaml_path, 'r') as file:
-                    data = yaml.safe_load(file)
-                    return data
-            except yaml.YAMLError as e:
-                # Format error message for display, allowing reasonable length
-                yaml_error_msg = f"❌ Error parsing YAML: {str(e)}"
-                # Truncate only if extremely long (over 80 chars) to avoid breaking table
-                if len(yaml_error_msg) > 77:
-                    yaml_error_msg = yaml_error_msg[:74] + "..."
-                # Use minimum padding to accommodate varying table widths
-                min_width = max(len(yaml_error_msg), 55)
-                print(f"│ {yaml_error_msg:<{min_width}} │")
-        else:
-            # Only print this message when called from ModulesPlacer context
-            # (when we're in a table context - we can detect this by checking call stack)
-            import inspect
-            caller_class = None
-            for frame_info in inspect.stack():
-                if 'self' in frame_info.frame.f_locals:
-                    caller_class = frame_info.frame.f_locals['self'].__class__.__name__
-                    break
-            
-            if caller_class == 'ModulesPlacer':
-                print(f"│ ℹ️  No init.yaml configuration found               │")
+                # Remove 'v' prefix if present and split by dots
+                clean_version = version_str.lower().lstrip('v')
+                parts = clean_version.split('.')
+                # Convert to integers, defaulting to 0 for missing parts
+                return tuple(int(part) for part in parts[:3])  # Take first 3 parts (major.minor.patch)
+            except (ValueError, AttributeError):
+                # If parsing fails, treat as version 0.0.0
+                return (0, 0, 0)
         
-        return None
+        existing_parsed = parse_version(existing_version)
+        new_parsed = parse_version(new_version)
+        
+        return new_parsed > existing_parsed
 
 class InitYamlLoader(yaml.SafeLoader):
     """A class to handle loading and parsing the init.yaml configuration file."""
@@ -336,13 +360,9 @@ class RepositoryCloner:
     
     def _extract_dependencies_from_module(self, module_path: str) -> List[str]:
         """Extract dependency URLs from a cloned module's init.yaml."""
-        module_info = ModulesInitYamlReader.read_module_inityaml(module_path)
-        if module_info and 'requirement' in module_info:
-            requirements = module_info['requirement']
-            if isinstance(requirements, list):
-                return requirements
-            elif isinstance(requirements, str):
-                return [requirements]
+        module_info = ModulesController.get_module_info_from_path(module_path)
+        if module_info and module_info.requirements:
+            return module_info.requirements
         return []
     
     def clone_all_repositories_recursive(self):
