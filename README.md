@@ -1,4 +1,73 @@
-# Default Project Template for AI Driven Highspeed Development Framework
+# # Default Project Template for AI Driven Highspeed Development Framework
+
+This is the default project template that gets cloned when creating new ADHD Framework projects.
+
+## Structure
+
+```
+📦 Default-Project-Template/
+├── 📄 adhd_cli.py              # Main CLI interface for project management
+├── 📄 init.yaml                # Default module configuration
+├── 📁 framework/               # Core framework modules
+│   ├── 📄 __init__.py         # Package initialization
+│   ├── 📄 modules_control.py  # Module discovery and management
+│   ├── 📄 project_init.py     # Project initialization logic
+│   └── 📄 project_refresh.py  # Module refresh functionality
+└── 📄 README.md               # This file
+```
+
+## Usage
+
+After your project is created using the main ADHD Framework, you can use the included CLI:
+
+### Initialize Project
+```bash
+python adhd_cli.py init                    # Initialize with default init.yaml
+python adhd_cli.py init --config my.yaml  # Use custom config file
+```
+
+### Manage Modules
+```bash
+python adhd_cli.py list                    # List all discovered modules
+python adhd_cli.py refresh                 # Refresh all modules
+python adhd_cli.py refresh --module logger # Refresh specific module
+python adhd_cli.py info --module logger    # Show module details
+```
+
+### Get Help
+```bash
+python adhd_cli.py --help                  # Show main help
+python adhd_cli.py init --help             # Show init command help
+python adhd_cli.py refresh --help          # Show refresh command help
+```
+
+## Framework Modules
+
+- **modules_control.py**: Discovers and manages project modules, providing information about their capabilities and configuration
+- **project_init.py**: Handles initial project setup, cloning repositories, placing modules, and running initialization scripts
+- **project_refresh.py**: Manages refreshing existing modules by running their refresh scripts
+
+## Module Structure
+
+Each module should follow this structure:
+```
+📁 module-name/
+├── 📄 __init__.py     # Python package (optional, enables ✅ Init)
+├── 📄 refresh.py      # Refresh script (optional, enables 🔄 Refresh)  
+├── 📄 init.yaml       # Module configuration (optional, enables ⚙️ Config)
+└── 📄 [other files]   # Module-specific files
+```
+
+The `init.yaml` file should contain:
+```yaml
+name: "Module Name"
+type: "module_type"  # e.g., "manager", "util", "plugin"
+version: "1.0.0"
+description: "Module description"
+folder_path: "target/directory"  # Where to place this module
+requirement:  # Dependencies (optional)
+  - "https://github.com/user/dependency.git"
+```
 
 This is the default project template for the ADHD (AI-Driven High-speed Development) Framework. It provides a complete setup for rapid project initialization, module management, and development workflow automation.
 
