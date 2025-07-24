@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 from pathlib import Path
-from modules_control import get_modules_controller
+from .modules_control import get_modules_controller
 
 class ModulesRefresher:
     """Handles refreshing all modules by running their refresh.py scripts."""
@@ -29,8 +29,8 @@ class ModulesRefresher:
     
     def _refresh_module(self, module_path: str):
         """Refresh a specific module by running its refresh.py script."""
-        module_info = self.modules_controller.get_module_info(module_path)
-        module_name = module_info.get("name", os.path.basename(module_path))
+        module_info = self.modules_controller.get_module_info_object(module_path)
+        module_name = module_info.name if module_info else os.path.basename(module_path)
         refresh_script = os.path.join(module_path, "refresh.py")
         
         print(f"🔄 Refreshing module: {module_name}")
@@ -84,8 +84,8 @@ def refresh_specific_module(module_name: str):
     
     # Find the module
     for path, info in controller.get_all_modules().items():
-        if info.get("name") == module_name:
-            if info.get("has_refresh"):
+        if info.name == module_name:
+            if info.has_refresh:
                 print(f"🔄 Refreshing specific module: {module_name}")
                 refresher._refresh_module(path)
                 return

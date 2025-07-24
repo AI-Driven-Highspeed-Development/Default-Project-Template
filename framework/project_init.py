@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 import shutil
-from modules_control import ModulesController
+from .modules_control import ModulesController
 
 class ProjectInitializer:
     """A class to handle the initialization of a project by cloning repositories."""
