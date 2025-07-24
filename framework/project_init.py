@@ -207,7 +207,6 @@ class ModulesInitializer:
                 capture_output=True,
                 text=True,
                 check=True,
-                cwd=module_path  # Run in module directory
             )
             
             if result.stdout.strip():
