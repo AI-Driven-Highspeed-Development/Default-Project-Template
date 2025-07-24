@@ -44,8 +44,36 @@ python adhd_cli.py refresh --help          # Show refresh command help
 ## Framework Modules
 
 - **modules_control.py**: Discovers and manages project modules, providing information about their capabilities and configuration
-- **project_init.py**: Handles initial project setup, cloning repositories, placing modules, and running initialization scripts
+- **project_init.py**: Handles initial project setup with advanced dependency resolution:
+  - Clones repositories and resolves dependencies recursively
+  - Implements smart module initialization with proper dependency order
+  - Detects and handles circular dependencies gracefully
+  - Tracks initialization state to prevent duplicate processing
 - **project_refresh.py**: Manages refreshing existing modules by running their refresh scripts
+
+## Dependency Resolution Features
+
+The framework now includes sophisticated dependency management:
+
+### 🔄 **Recursive Dependency Resolution**
+- Automatically resolves module dependencies in the correct order
+- Initializes required modules before dependent modules
+- Supports multi-level dependency chains
+
+### 🛡️ **Circular Dependency Detection**
+- Detects circular dependencies during initialization
+- Gracefully breaks cycles and continues initialization
+- Provides clear warnings about dependency loops
+
+### 📊 **Smart Initialization Tracking**
+- Prevents duplicate module initialization
+- Tracks successful and failed initializations
+- Provides comprehensive initialization reports
+
+### 🔗 **Flexible URL Matching**
+- Matches dependency URLs with multiple formats (.git, case-insensitive)
+- Supports repository name-based fallback matching
+- Handles URL normalization automatically
 
 ## Module Structure
 

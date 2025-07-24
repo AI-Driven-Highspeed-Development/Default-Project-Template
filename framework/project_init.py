@@ -25,15 +25,18 @@ class ProjectInitializer:
         repo_urls = self.yaml_loader.load_modules()
         if repo_urls:
             self.rc = RepositoryCloner(repo_urls, clone_dir)
+            self.modules_placer = ModulesPlacer(clone_dir)
+            # Pass the URL mappings from cloner to placer
+            self.modules_placer.set_url_mappings(self.rc.get_url_to_clone_path_mapping())
         else:
             print("\n⚠️  No repositories to clone.")
-            
-        self.modules_placer = ModulesPlacer(clone_dir)
+            self.modules_placer = ModulesPlacer(clone_dir)
         modules_paths = self.modules_placer.place_modules()
+        url_to_path_mapping = self.modules_placer.get_url_to_path_mapping()
         
         # Use ModulesController to get better module information
         self.modules_controller = ModulesController()
-        self.modules_initializer = ModulesInitializer(modules_paths, self.modules_controller)
+        self.modules_initializer = ModulesInitializer(modules_paths, self.modules_controller, url_to_path_mapping)
         self.modules_initializer.initialize_modules()
 
         print(f"\n🧹 Cleaning up temporary files...")
@@ -63,97 +66,244 @@ class ProjectInitializer:
         print(f"{'='*60}")
 
 class ModulesInitializer:
-    """A class to handle the initialization of modules."""
-    def __init__(self, modules: List[str], modules_controller: ModulesController):
+    """A class to handle the initialization of modules with dependency resolution."""
+    
+    def __init__(self, modules: List[str], modules_controller: ModulesController, url_to_path_mapping: dict):
         self.modules = modules
         self.modules_controller = modules_controller
+        self.url_to_path_mapping = url_to_path_mapping
+        self.initialized_modules = set()  # Track successfully initialized modules
+        self.initialization_chain = []    # Track current initialization chain for cycle detection
+        self.failed_modules = set()       # Track modules that failed to initialize
 
     def initialize_modules(self):
-        """Initialize each module using ModulesController for better information."""
+        """Initialize all modules with proper dependency resolution."""
         print(f"\n{'='*60}")
         print("🔍 SCANNING MODULES AND CAPABILITIES")
         print(f"{'='*60}")
         
         # Get updated module information after placement
-        self.modules_controller._scan_modules()  # Refresh module information
+        self.modules_controller._scan_modules()
         all_modules_info = self.modules_controller.get_all_modules()
         
-        uninitialized_modules = []
+        print(f"📋 Found {len(self.modules)} modules to initialize")
+        print(f"🔗 Dependency mapping contains {len(self.url_to_path_mapping)} URL-to-path mappings")
         
+        # Initialize each module (dependencies will be handled recursively)
         for module_path in self.modules:
-            # Get module info from controller
+            if module_path not in self.initialized_modules and module_path not in self.failed_modules:
+                self._initialize_module_with_dependencies(module_path, all_modules_info)
+        
+        self._print_initialization_summary()
+
+    def _initialize_module_with_dependencies(self, module_path: str, all_modules_info: dict) -> bool:
+        """Initialize a module and its dependencies recursively."""
+        # Check if module is already initialized
+        if module_path in self.initialized_modules:
+            return True
+        
+        # Check if module failed before
+        if module_path in self.failed_modules:
+            return False
+        
+        # Check for circular dependency
+        if module_path in self.initialization_chain:
+            self._handle_circular_dependency(module_path)
+            return False
+        
+        # Add to initialization chain for cycle detection
+        self.initialization_chain.append(module_path)
+        
+        try:
+            # Get module information
             module_info = all_modules_info.get(module_path)
             if not module_info:
-                # Fallback to static method if not in scanned modules
                 module_info = ModulesController.get_module_info_from_path(module_path)
             
             module_name = module_info.name if module_info else os.path.basename(module_path)
-            module_type = module_info.type if module_info else ''
             
-            # Calculate dynamic width based on content
-            content_lines = [
-                "🔧 INITIALIZING MODULE",
-                f"📁 Module: {module_name}",
-                f"📍 Path: {module_path}"
-            ]
+            # Display module initialization header
+            self._display_module_header(module_name, module_path, module_info)
             
-            if module_type:
-                content_lines.append(f"📂 Type: {module_type}")
+            # Initialize dependencies first
+            if not self._initialize_dependencies(module_info, all_modules_info):
+                print(f"   ❌ Dependency initialization failed for {module_name}")
+                self.failed_modules.add(module_path)
+                return False
             
-            # Find the longest content line and add padding
-            max_content_width = max(len(line) for line in content_lines)
-            table_width = max(max_content_width + 4, 60)  # Minimum 60 chars, +4 for padding and borders
+            # Initialize the module itself
+            success = self._perform_module_initialization(module_path, module_info, module_name)
             
-            print(f"\n┌{'─'*table_width}┐")
-            print(f"│ 🔧 INITIALIZING MODULE{' '*(table_width-24)} │")
-            print(f"├{'─'*table_width}┤")
+            if success:
+                self.initialized_modules.add(module_path)
+                print(f"   ✅ Successfully initialized {module_name}")
+            else:
+                self.failed_modules.add(module_path)
+                print(f"   ❌ Failed to initialize {module_name}")
             
-            print(f"│ 📁 Module: {module_name:<{table_width-13}} │")
-            if module_type:
-                print(f"│ 📂 Type: {module_type:<{table_width-11}} │")
-            print(f"│ 📍 Path: {module_path:<{table_width-11}} │")
-            print(f"└{'─'*table_width}┘")
+            return success
             
-            # Check for initialization capabilities
-            has_init = module_info.has_init if module_info else False
-            
-            initialized = False
-            
-            # Try __init__.py first if it exists
-            if has_init:
-                init_path = os.path.join(module_path, '__init__.py')
-                try:
-                    print(f"   🔄 Running __init__.py...")
-                    subprocess.run([sys.executable, init_path], 
-                                   capture_output=True,
-                                   text=True,
-                                   check=True)
-                    print(f"   ✅ Successfully initialized {module_name}")
-                    initialized = True
-                except subprocess.CalledProcessError as e:
-                    print(f"   ❌ Error initializing {module_name}: {e}")
-                    print(f"   📋 Error details: {e.stderr if e.stderr else 'No error output'}")
-                    print(f"   📋 Return code: {e.returncode}")
-                    if e.stdout:
-                        print(f"   📋 Output: {e.stdout}")
-                    uninitialized_modules.append(module_path)
-            
-            if not initialized and not has_init:
-                print(f"   ℹ️  No initialization needed for {module_name}")
+        finally:
+            # Remove from initialization chain
+            if module_path in self.initialization_chain:
+                self.initialization_chain.remove(module_path)
+
+    def _initialize_dependencies(self, module_info, all_modules_info: dict) -> bool:
+        """Initialize all dependencies for a module."""
+        if not module_info or not module_info.requirements:
+            return True  # No dependencies to initialize
         
-        # Summary
+        print(f"   🔗 Initializing {len(module_info.requirements)} dependencies...")
+        
+        for requirement_url in module_info.requirements:
+            dependency_path = self._resolve_dependency_path(requirement_url)
+            
+            if not dependency_path:
+                print(f"   ⚠️  Dependency not found: {requirement_url}")
+                continue
+            
+            if not self._initialize_module_with_dependencies(dependency_path, all_modules_info):
+                dependency_name = os.path.basename(dependency_path)
+                print(f"   ❌ Failed to initialize dependency: {dependency_name}")
+                return False
+        
+        return True
+
+    def _resolve_dependency_path(self, requirement_url: str) -> str:
+        """Resolve a requirement URL to its local module path."""
+        # Try exact match first
+        if requirement_url in self.url_to_path_mapping:
+            return self.url_to_path_mapping[requirement_url]
+        
+        # Try normalized URL matching (remove .git, case insensitive)
+        normalized_url = requirement_url.lower().rstrip('.git')
+        
+        for url, path in self.url_to_path_mapping.items():
+            if url.lower().rstrip('.git') == normalized_url:
+                return path
+        
+        # Try repository name matching as fallback
+        requirement_name = requirement_url.split('/')[-1].replace('.git', '')
+        
+        for url, path in self.url_to_path_mapping.items():
+            url_name = url.split('/')[-1].replace('.git', '')
+            if url_name.lower() == requirement_name.lower():
+                return path
+        
+        return None
+
+    def _perform_module_initialization(self, module_path: str, module_info, module_name: str) -> bool:
+        """Perform the actual initialization of a module."""
+        if not module_info or not module_info.has_init:
+            print(f"   ℹ️  No initialization needed for {module_name}")
+            return True
+        
+        init_path = os.path.join(module_path, '__init__.py')
+        
+        try:
+            print(f"   🔄 Running __init__.py...")
+            result = subprocess.run(
+                [sys.executable, init_path], 
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=module_path  # Run in module directory
+            )
+            
+            if result.stdout.strip():
+                print(f"   📝 Output: {result.stdout.strip()}")
+            
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            self._handle_initialization_error(module_name, e)
+            return False
+        except Exception as e:
+            print(f"   ❌ Unexpected error initializing {module_name}: {str(e)}")
+            return False
+
+    def _handle_circular_dependency(self, module_path: str):
+        """Handle circular dependency detection."""
+        module_name = os.path.basename(module_path)
+        cycle_start = self.initialization_chain.index(module_path)
+        cycle = self.initialization_chain[cycle_start:] + [module_path]
+        cycle_names = [os.path.basename(path) for path in cycle]
+        
+        print(f"\n⚠️  CIRCULAR DEPENDENCY DETECTED!")
+        print(f"   🔄 Cycle: {' → '.join(cycle_names)}")
+        print(f"   🛑 Breaking cycle at {module_name}")
+        print(f"   ℹ️  Will attempt to initialize {module_name} without its dependencies")
+
+    def _handle_initialization_error(self, module_name: str, error: subprocess.CalledProcessError):
+        """Handle module initialization errors with detailed reporting."""
+        print(f"   ❌ Error initializing {module_name}")
+        print(f"   📋 Return code: {error.returncode}")
+        
+        if error.stderr and error.stderr.strip():
+            print(f"   📋 Error details: {error.stderr.strip()}")
+        
+        if error.stdout and error.stdout.strip():
+            print(f"   📋 Output: {error.stdout.strip()}")
+        
+        if not error.stderr and not error.stdout:
+            print(f"   📋 No error output available")
+
+    def _display_module_header(self, module_name: str, module_path: str, module_info):
+        """Display a formatted header for module initialization."""
+        module_type = module_info.type if module_info else ''
+        
+        # Calculate dynamic width based on content
+        content_lines = [
+            "🔧 INITIALIZING MODULE",
+            f"� Module: {module_name}",
+            f"📍 Path: {module_path}"
+        ]
+        
+        if module_type:
+            content_lines.append(f"📂 Type: {module_type}")
+        
+        # Find the longest content line and add padding
+        max_content_width = max(len(line) for line in content_lines)
+        table_width = max(max_content_width + 4, 60)
+        
+        print(f"\n┌{'─'*table_width}┐")
+        print(f"│ 🔧 INITIALIZING MODULE{' '*(table_width-24)} │")
+        print(f"├{'─'*table_width}┤")
+        print(f"│ 📁 Module: {module_name:<{table_width-13}} │")
+        
+        if module_type:
+            print(f"│ 📂 Type: {module_type:<{table_width-11}} │")
+        
+        print(f"│ 📍 Path: {module_path:<{table_width-11}} │")
+        print(f"└{'─'*table_width}┘")
+
+    def _print_initialization_summary(self):
+        """Print a comprehensive summary of the initialization process."""
+        total_modules = len(self.modules)
+        successful_modules = len(self.initialized_modules)
+        failed_modules = len(self.failed_modules)
+        
         print(f"\n{'='*60}")
         print("📊 INITIALIZATION SUMMARY")
         print(f"{'='*60}")
         
-        if uninitialized_modules:
-            print(f"❌ {len(uninitialized_modules)} modules could not be initialized:")
-            for module in uninitialized_modules:
-                print(f"   • {os.path.basename(module)}")
+        print(f"📦 Total modules: {total_modules}")
+        print(f"✅ Successfully initialized: {successful_modules}")
+        print(f"❌ Failed to initialize: {failed_modules}")
+        
+        if failed_modules > 0:
+            print(f"\n❌ Failed modules:")
+            for module_path in self.failed_modules:
+                module_name = os.path.basename(module_path)
+                print(f"   • {module_name}")
             print()
         
-        successful_modules = len(self.modules) - len(uninitialized_modules)
-        print(f"✅ {successful_modules} out of {len(self.modules)} modules processed successfully")
+        if successful_modules == total_modules:
+            print("🎉 All modules initialized successfully!")
+        elif successful_modules > 0:
+            print("⚠️  Some modules failed to initialize. Check output above for details.")
+        else:
+            print("💥 No modules were successfully initialized.")
         
         # Show final module status
         print(f"\n{'='*60}")
@@ -168,6 +318,15 @@ class ModulesPlacer:
     def __init__(self, clone_dir="clone_temp"):
         self.clone_dir = clone_dir
         self.modules = []
+        self.url_to_path_mapping = {}  # Track URL to path mappings for dependency resolution
+        
+    def get_url_to_path_mapping(self) -> dict:
+        """Get the URL to path mapping for dependency resolution."""
+        return self.url_to_path_mapping.copy()
+    
+    def set_url_mappings(self, clone_url_mappings: dict):
+        """Set initial URL mappings from the cloner."""
+        self.clone_url_mappings = clone_url_mappings
         
     def move_contents(self, module_dir: str, target_dir: str):
         """Move contents of module_dir into target_dir."""
@@ -282,6 +441,7 @@ class ModulesPlacer:
                 self.move_contents(module_dir, folder_path)
                 print(f"│ ✅ Successfully replaced module{' '*(table_width-33)} │")
                 self.modules.append(folder_path)
+                self._update_url_mapping(module_dir, folder_path)
             except OSError as e:
                 print(f"│ ❌ Error replacing module: {str(e):<{table_width-30}} │")
         else:
@@ -292,9 +452,21 @@ class ModulesPlacer:
         try:
             self.move_contents(module_dir, folder_path)
             print(f"│ ✅ Successfully moved to target location{' '*(table_width-42)} │")
-            self.modules.append(folder_path)    
+            self.modules.append(folder_path)
+            self._update_url_mapping(module_dir, folder_path)
         except OSError as e:
             print(f"│ ❌ Error moving module: {str(e):<{table_width-24}} │")
+
+    def _update_url_mapping(self, module_dir: str, target_path: str):
+        """Update URL to path mapping when a module is placed."""
+        module_name = os.path.basename(module_dir)
+        
+        # Find the corresponding URL from clone mappings
+        if hasattr(self, 'clone_url_mappings'):
+            for url, clone_path in self.clone_url_mappings.items():
+                if os.path.basename(clone_path) == module_name:
+                    self.url_to_path_mapping[url] = target_path
+                    break
 
     def _should_replace_module(self, existing_version: str, new_version: str) -> bool:
         """
@@ -365,6 +537,7 @@ class RepositoryCloner:
         self.clone_dir = clone_dir
         self.successful_clones = 0
         self.processed_repos = set()  # Track processed repositories to avoid infinite loops
+        self.url_to_clone_path = {}   # Track URL to clone path mappings
         
         # Create clone directory
         Path(self.clone_dir).mkdir(exist_ok=True)
@@ -373,6 +546,10 @@ class RepositoryCloner:
         # Clone repositories if URLs are provided
         if self.repo_urls:
             self.clone_all_repositories_recursive()
+    
+    def get_url_to_clone_path_mapping(self) -> dict:
+        """Get the URL to clone path mapping for dependency resolution."""
+        return self.url_to_clone_path.copy()
     
     def _format_error_for_table(self, error_msg: str, table_width: int) -> str:
         """Format error message to fit in table, truncating if necessary."""
@@ -505,6 +682,9 @@ class RepositoryCloner:
             print(f"│ 🌐 URL: {repo_url:<{table_width-10}} │")
             print(f"│ 📍 Target: {clone_path:<{table_width-13}} │")
             print(f"├{'─'*table_width}┤")
+            
+            # Track URL to clone path mapping
+            self.url_to_clone_path[repo_url] = clone_path
             
             # Skip if already cloned (but still return True for dependency analysis)
             if os.path.exists(clone_path):
