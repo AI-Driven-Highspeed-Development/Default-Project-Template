@@ -92,7 +92,7 @@ class ModulesController:
                         module_info.description = yaml_data.get("description", "")
                         
                         # Handle requirements (can be list or single string)
-                        requirements = yaml_data.get("requirement", [])
+                        requirements = yaml_data.get("requirements", [])
                         if isinstance(requirements, str):
                             module_info.requirements = [requirements]
                         elif isinstance(requirements, list):
