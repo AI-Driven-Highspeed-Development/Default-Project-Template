@@ -54,8 +54,12 @@ class ProjectInitializer:
         print("📍 Navigation:")
         print(f"   • If not in project directory: cd '{os.getcwd()}'")
         print("🔄 Re-initialization:")
-        print("   • After changing init.yaml: python project_init.py")
-        print("   • To refresh existing project: python project_refresh.py")
+        print("   • After changing init.yaml: ")
+        print("       python adhd_cli.py init")
+        print("   • To refresh existing project: ")
+        print("       python adhd_cli.py refresh")
+        print("   • To list all modules: ")
+        print("       python adhd_cli.py list")
         print(f"{'='*60}")
 
 class ModulesInitializer:
@@ -281,7 +285,7 @@ class ModulesPlacer:
             except OSError as e:
                 print(f"│ ❌ Error replacing module: {str(e):<{table_width-30}} │")
         else:
-            print(f"│ ⚠️  Keeping existing version (newer/same){' '*(table_width-41)} │")
+            print(f"│ ⚠️  Keeping existing version (newer/same){' '*(table_width-42)} │")
 
     def _place_new_module(self, module_dir: str, folder_path: str, table_width: int):
         """Place a new module."""
