@@ -26,11 +26,24 @@ def init_project(args):
     """Initialize a new ADHD project."""
     print("🚀 Initializing ADHD project...")
     
+    # Handle force flag with confirmation
+    force_update = False
+    if args.force:
+        print("\n⚠️  WARNING: Force mode will update ALL modules regardless of version!")
+        print("   This will overwrite existing modules even if they are newer.")
+        response = input("   Are you sure you want to continue? (yes/no): ")
+        if response.lower() in ['yes', 'y']:
+            force_update = True
+            print("✅ Force mode confirmed.")
+        else:
+            print("❌ Operation cancelled.")
+            return
+    
     yaml_file = args.config if args.config else "init.yaml"
     clone_dir = args.clone_dir if args.clone_dir else "clone_temp"
     
     try:
-        initializer = ProjectInitializer(yaml_file=yaml_file, clone_dir=clone_dir)
+        initializer = ProjectInitializer(yaml_file=yaml_file, clone_dir=clone_dir, force_update=force_update)
         print("✅ Project initialization completed successfully!")
     except Exception as e:
         print(f"❌ Project initialization failed: {str(e)}")
@@ -129,6 +142,7 @@ def main():
 Examples:
   %(prog)s init                    # Initialize project with default init.yaml
   %(prog)s init --config my.yaml  # Initialize with custom config file
+  %(prog)s init --force            # Force update all modules (with confirmation)
   %(prog)s refresh                 # Refresh all modules
   %(prog)s refresh --module logger # Refresh specific module
   %(prog)s list                    # List all modules
@@ -144,6 +158,8 @@ Examples:
                            help='Path to YAML configuration file (default: init.yaml)')
     init_parser.add_argument('--clone-dir', 
                            help='Directory for temporary clones (default: clone_temp)')
+    init_parser.add_argument('--force', '-f', action='store_true',
+                           help='Force update all modules regardless of version (requires confirmation)')
     init_parser.set_defaults(func=init_project)
     
     # Refresh command

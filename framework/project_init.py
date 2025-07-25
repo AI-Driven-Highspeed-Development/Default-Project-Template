@@ -11,7 +11,7 @@ from .cli_format import TableFormatter, TableRow, StaticPrintout
 class ProjectInitializer:
     """A class to handle the initialization of a project by cloning repositories."""
     
-    def __init__(self, yaml_file="init.yaml", clone_dir="clone_temp"):
+    def __init__(self, yaml_file="init.yaml", clone_dir="clone_temp", force_update=False):
         StaticPrintout.project_init_header()
         print("📂 Creating project directory structure...")
         
@@ -24,12 +24,12 @@ class ProjectInitializer:
         repo_urls = self.yaml_loader.load_modules()
         if repo_urls:
             self.rc = RepositoryCloner(repo_urls, clone_dir)
-            self.modules_placer = ModulesPlacer(clone_dir)
+            self.modules_placer = ModulesPlacer(clone_dir, force_update=force_update)
             # Pass the URL mappings from cloner to placer
             self.modules_placer.set_url_mappings(self.rc.get_url_to_clone_path_mapping())
         else:
             print("\n⚠️  No repositories to clone.")
-            self.modules_placer = ModulesPlacer(clone_dir)
+            self.modules_placer = ModulesPlacer(clone_dir, force_update=force_update)
         modules_paths = self.modules_placer.place_modules()
         url_to_path_mapping = self.modules_placer.get_url_to_path_mapping()
         
@@ -269,10 +269,11 @@ class ModulesInitializer:
 class ModulesPlacer:
     """A class to handle placing modules in the appropriate directories."""
     
-    def __init__(self, clone_dir="clone_temp"):
+    def __init__(self, clone_dir="clone_temp", force_update=False):
         self.clone_dir = clone_dir
         self.modules = []
         self.url_to_path_mapping = {}  # Track URL to path mappings for dependency resolution
+        self.force_update = force_update  # Force update regardless of version
         
     def get_url_to_path_mapping(self) -> dict:
         """Get the URL to path mapping for dependency resolution."""
@@ -365,8 +366,14 @@ class ModulesPlacer:
         table.add_row(TableRow(f"🔍 Existing version: {existing_version}"))
         table.add_row(TableRow(f"🆕 New version: {new_version}"))
         
+        if self.force_update:
+            table.add_row(TableRow("⚡ Force mode: Updating regardless of version"))
+        
         if self._should_replace_module(existing_version, new_version):
-            table.add_row(TableRow("🔄 Replacing with newer version..."))
+            if self.force_update:
+                table.add_row(TableRow("🔄 Force replacing module..."))
+            else:
+                table.add_row(TableRow("🔄 Replacing with newer version..."))
             try:
                 shutil.rmtree(folder_path)
                 os.makedirs(folder_path, exist_ok=True)
@@ -403,8 +410,12 @@ class ModulesPlacer:
     def _should_replace_module(self, existing_version: str, new_version: str) -> bool:
         """
         Compare two version strings and determine if we should replace the existing module.
-        Returns True if new_version is greater than existing_version.
+        Returns True if new_version is greater than existing_version, or if force_update is enabled.
         """
+        # If force update is enabled, always replace
+        if self.force_update:
+            return True
+            
         def parse_version(version_str: str) -> tuple:
             """Parse version string into tuple of integers for comparison."""
             try:
