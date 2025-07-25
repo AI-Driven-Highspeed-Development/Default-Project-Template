@@ -6,14 +6,13 @@ import sys
 from pathlib import Path
 import shutil
 from .modules_control import ModulesController
+from .cli_format import TableFormatter, TableRow, StaticPrintout
 
 class ProjectInitializer:
     """A class to handle the initialization of a project by cloning repositories."""
     
     def __init__(self, yaml_file="init.yaml", clone_dir="clone_temp"):
-        print(f"\n{'='*60}")
-        print("🚀 ADHD PROJECT INITIALIZATION")
-        print(f"{'='*60}")
+        StaticPrintout.project_init_header()
         print("📂 Creating project directory structure...")
         
         os.makedirs("managers", exist_ok=True)
@@ -43,27 +42,7 @@ class ProjectInitializer:
         shutil.rmtree(clone_dir, ignore_errors=True)
         print("✅ Cleanup complete")
         
-        print(f"\n{'='*60}")
-        print("🎉 PROJECT INITIALIZATION COMPLETE!")
-        print(f"{'='*60}")
-        print("🎯 Your ADHD project template is ready to use!")
-        print("📝 Check the modules above for available functionality.")
-        print(f"{'='*60}")
-        print("💡 Next steps:")
-        print("   • Review the initialized modules")
-        print("   • Configure settings as needed")
-        print("   • Start building your project!")
-        print(f"{'='*60}")
-        print("📍 Navigation:")
-        print(f"   • If not in project directory: cd '{os.getcwd()}'")
-        print("🔄 Re-initialization:")
-        print("   • After changing init.yaml: ")
-        print("       python adhd_cli.py init")
-        print("   • To refresh existing project: ")
-        print("       python adhd_cli.py refresh")
-        print("   • To list all modules: ")
-        print("       python adhd_cli.py list")
-        print(f"{'='*60}")
+        StaticPrintout.project_init_complete()
 
 class ModulesInitializer:
     """A class to handle the initialization of modules with dependency resolution."""
@@ -78,9 +57,7 @@ class ModulesInitializer:
 
     def initialize_modules(self):
         """Initialize all modules with proper dependency resolution."""
-        print(f"\n{'='*60}")
-        print("🔍 SCANNING MODULES AND CAPABILITIES")
-        print(f"{'='*60}")
+        StaticPrintout.modules_scan_header()
         
         # Get updated module information after placement
         self.modules_controller._scan_modules()
@@ -228,10 +205,7 @@ class ModulesInitializer:
         cycle = self.initialization_chain[cycle_start:] + [module_path]
         cycle_names = [os.path.basename(path) for path in cycle]
         
-        print(f"\n⚠️  CIRCULAR DEPENDENCY DETECTED!")
-        print(f"   🔄 Cycle: {' → '.join(cycle_names)}")
-        print(f"   🛑 Breaking cycle at {module_name}")
-        print(f"   ℹ️  Will attempt to initialize {module_name} without its dependencies")
+        StaticPrintout.circular_dependency_warning(cycle_names, module_name)
 
     def _handle_initialization_error(self, module_name: str, error: subprocess.CalledProcessError):
         """Handle module initialization errors with detailed reporting."""
@@ -249,32 +223,17 @@ class ModulesInitializer:
 
     def _display_module_header(self, module_name: str, module_path: str, module_info):
         """Display a formatted header for module initialization."""
-        module_type = module_info.type if module_info else ''
+        table = TableFormatter()
+        table.set_title("🔧 INITIALIZING MODULE")
         
-        # Calculate dynamic width based on content
-        content_lines = [
-            "🔧 INITIALIZING MODULE",
-            f"� Module: {module_name}",
-            f"📍 Path: {module_path}"
-        ]
+        table.add_row(TableRow(f"📁 Module: {module_name}"))
         
-        if module_type:
-            content_lines.append(f"📂 Type: {module_type}")
+        if module_info and module_info.type:
+            table.add_row(TableRow(f"📂 Type: {module_info.type}"))
         
-        # Find the longest content line and add padding
-        max_content_width = max(len(line) for line in content_lines)
-        table_width = max(max_content_width + 4, 60)
+        table.add_row(TableRow(f"� Path: {module_path}"))
         
-        print(f"\n┌{'─'*table_width}┐")
-        print(f"│ 🔧 INITIALIZING MODULE{' '*(table_width-24)} │")
-        print(f"├{'─'*table_width}┤")
-        print(f"│ 📁 Module: {module_name:<{table_width-13}} │")
-        
-        if module_type:
-            print(f"│ 📂 Type: {module_type:<{table_width-11}} │")
-        
-        print(f"│ 📍 Path: {module_path:<{table_width-11}} │")
-        print(f"└{'─'*table_width}┘")
+        print(table.render("normal", 60))
 
     def _print_initialization_summary(self):
         """Print a comprehensive summary of the initialization process."""
@@ -282,9 +241,7 @@ class ModulesInitializer:
         successful_modules = len(self.initialized_modules)
         failed_modules = len(self.failed_modules)
         
-        print(f"\n{'='*60}")
-        print("📊 INITIALIZATION SUMMARY")
-        print(f"{'='*60}")
+        StaticPrintout.initialization_summary_header()
         
         print(f"📦 Total modules: {total_modules}")
         print(f"✅ Successfully initialized: {successful_modules}")
@@ -305,9 +262,7 @@ class ModulesInitializer:
             print("💥 No modules were successfully initialized.")
         
         # Show final module status
-        print(f"\n{'='*60}")
-        print("📋 FINAL MODULE STATUS")
-        print(f"{'='*60}")
+        StaticPrintout.final_module_status_header()
         self.modules_controller.list_modules()
                 
 
@@ -352,9 +307,7 @@ class ModulesPlacer:
             print("⚠️  No modules found to place.")
             return []
     
-        print(f"\n{'='*60}")
-        print("📦 MODULE PLACEMENT")
-        print(f"{'='*60}")
+        StaticPrintout.module_placement_header()
         print(f"🔍 Found {len(modules_dir)} modules to place")
         
         for module_dir in modules_dir:
@@ -368,93 +321,73 @@ class ModulesPlacer:
         module_info = ModulesController.get_module_info_from_path(module_dir)
         module_name = os.path.basename(module_dir)
         
-        # Calculate table width
-        table_width = self._calculate_table_width(module_name, module_info)
-        
-        print(f"\n┌{'─'*table_width}┐")
-        print(f"│ 📁 Processing: {module_name:<{table_width-17}} │")
-        print(f"├{'─'*table_width}┤")
+        # Create table for module processing
+        table = TableFormatter()
+        table.set_title(f"📁 Processing: {module_name}")
         
         if not module_info:
-            print(f"│ ⚠️  No init.yaml found, skipping module{' '*(table_width-39)} │")
-            print(f"└{'─'*table_width}┘")
+            table.add_row(TableRow("⚠️  No init.yaml found, skipping module"))
+            print(table.render("normal", 60))
             return
             
         folder_path = module_info.folder_path
-        self._handle_module_placement(module_dir, folder_path, module_info, table_width)
-        print(f"└{'─'*table_width}┘")
+        self._handle_module_placement(module_dir, folder_path, module_info, table)
 
-    def _calculate_table_width(self, module_name: str, module_info) -> int:
-        """Calculate appropriate table width based on content."""
-        content_lines = [
-            f"📁 Processing: {module_name}",
-            "⚠️  Module already exists, skipping...",
-            "✅ Successfully moved to target location",
-            "⚠️  No init.yaml found, skipping module"
-        ]
-        
-        if module_info:
-            content_lines.extend([
-                f"🎯 Target directory: {module_info.folder_path}",
-                f"📦 Version: {module_info.version}"
-            ])
-        
-        max_content_width = max(len(line) for line in content_lines)
-        return max(max_content_width + 4, 60)
-
-    def _handle_module_placement(self, module_dir: str, folder_path: str, module_info, table_width: int):
+    def _handle_module_placement(self, module_dir: str, folder_path: str, module_info, table: TableFormatter):
         """Handle the placement logic for a module."""
         old_folder_exists = os.path.exists(folder_path)
 
         if not old_folder_exists:
             os.makedirs(folder_path, exist_ok=True)
-            print(f"│ 📂 Created directory: {folder_path:<{table_width-24}} │")
+            table.add_row(TableRow(f"📂 Created directory: {folder_path}"))
             
-        print(f"│ 🎯 Target: {folder_path:<{table_width-13}} │")
-        print(f"│ 📦 Version: {module_info.version:<{table_width-14}} │")
+        table.add_row(TableRow(f"🎯 Target: {folder_path}"))
+        table.add_row(TableRow(f"📦 Version: {module_info.version}"))
         
         if old_folder_exists:
-            self._handle_existing_module(module_dir, folder_path, module_info, table_width)
+            self._handle_existing_module(module_dir, folder_path, module_info, table)
         else:
-            self._place_new_module(module_dir, folder_path, table_width)
+            self._place_new_module(module_dir, folder_path, table)
+        
+        print(table.render("normal", 80))
 
-    def _handle_existing_module(self, module_dir: str, folder_path: str, module_info, table_width: int):
+    def _handle_existing_module(self, module_dir: str, folder_path: str, module_info, table: TableFormatter):
         """Handle placement when module already exists."""
         existing_module_info = ModulesController.get_module_info_from_path(folder_path)
         
         if not existing_module_info:
-            print(f"│ ⚠️  Module exists but no version info, skipping...{' '*(table_width-49)} │")
+            table.add_row(TableRow("⚠️  Module exists but no version info, skipping..."))
             return
             
         existing_version = existing_module_info.version
         new_version = module_info.version
         
-        print(f"│ 🔍 Existing version: {existing_version:<{table_width-23}} │")
-        print(f"│ 🆕 New version: {new_version:<{table_width-18}} │")
+        table.add_row(TableRow(f"🔍 Existing version: {existing_version}"))
+        table.add_row(TableRow(f"🆕 New version: {new_version}"))
         
         if self._should_replace_module(existing_version, new_version):
-            print(f"│ 🔄 Replacing with newer version...{' '*(table_width-36)} │")
+            table.add_row(TableRow("🔄 Replacing with newer version..."))
             try:
                 shutil.rmtree(folder_path)
                 os.makedirs(folder_path, exist_ok=True)
                 self.move_contents(module_dir, folder_path)
-                print(f"│ ✅ Successfully replaced module{' '*(table_width-33)} │")
+                table.add_row(TableRow("✅ Successfully replaced module"))
                 self.modules.append(folder_path)
                 self._update_url_mapping(module_dir, folder_path)
             except OSError as e:
-                print(f"│ ❌ Error replacing module: {str(e):<{table_width-30}} │")
+                table.add_row(TableRow(f"❌ Error replacing module: {str(e)}"))
         else:
-            print(f"│ ⚠️  Keeping existing version (newer/same){' '*(table_width-42)} │")
+            table.add_row(TableRow("⚠️  Keeping existing version (newer/same)"))
 
-    def _place_new_module(self, module_dir: str, folder_path: str, table_width: int):
+    def _place_new_module(self, module_dir: str, folder_path: str, table: TableFormatter):
         """Place a new module."""
         try:
             self.move_contents(module_dir, folder_path)
-            print(f"│ ✅ Successfully moved to target location{' '*(table_width-42)} │")
+            table.add_row(TableRow("✅ Successfully moved to target location"))
             self.modules.append(folder_path)
             self._update_url_mapping(module_dir, folder_path)
         except OSError as e:
-            print(f"│ ❌ Error moving module: {str(e):<{table_width-24}} │")
+            table.add_row(TableRow(f"❌ Error moving module: {str(e)}"))
 
     def _update_url_mapping(self, module_dir: str, target_path: str):
         """Update URL to path mapping when a module is placed."""
@@ -500,9 +433,7 @@ class InitYamlLoader(yaml.SafeLoader):
         Returns:
             List[str]: List of repository URLs
         """
-        print(f"\n{'='*60}")
-        print("📄 LOADING CONFIGURATION")
-        print(f"{'='*60}")
+        StaticPrintout.configuration_loading_header()
         
         try:
             with open(self.yaml_file, 'r') as file:
@@ -571,9 +502,7 @@ class RepositoryCloner:
     
     def clone_all_repositories_recursive(self):
         """Clone all repositories recursively, including their dependencies."""
-        print(f"\n{'='*60}")
-        print("⬇️  RECURSIVE REPOSITORY CLONING")
-        print(f"{'='*60}")
+        StaticPrintout.recursive_cloning_header()
         
         # Start with initial repositories
         repos_to_process = list(self.repo_urls)
@@ -587,9 +516,7 @@ class RepositoryCloner:
             current_batch = repos_to_process.copy()
             repos_to_process.clear()
             
-            print(f"\n{'='*60}")
-            print(f"📦 DEPENDENCY LEVEL {level}")
-            print(f"{'='*60}")
+            StaticPrintout.dependency_level_header(level)
             print(f"🔍 Processing {len(current_batch)} repositories at level {level}")
             
             for i, repo_url in enumerate(current_batch, 1):
@@ -658,9 +585,7 @@ class RepositoryCloner:
                 print(f"\n✅ No more dependencies found. Recursion complete!")
 
         # Final summary
-        print(f"\n{'='*60}")
-        print("📊 RECURSIVE CLONING SUMMARY")
-        print(f"{'='*60}")
+        StaticPrintout.recursive_cloning_summary_header()
         print(f"🎯 Total repositories discovered: {len(all_discovered_repos)}")
         print(f"✅ Successfully processed: {len(self.processed_repos)}")
         print(f"📦 Successfully cloned: {self.successful_clones}")
