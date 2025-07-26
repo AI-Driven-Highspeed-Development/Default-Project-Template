@@ -38,7 +38,8 @@ class ProjectInitializer:
         self.modules_initializer = ModulesInitializer(modules_paths, self.modules_controller, url_to_path_mapping)
         self.modules_initializer.initialize_modules()
         self.append_requirements()
-        
+        self.create_vscode_workspace()
+
         StaticPrintout.project_init_complete()
 
     def append_requirements(self):
@@ -60,6 +61,56 @@ class ProjectInitializer:
                         print(f"✅ Appended requirements from {module_path}")
         
         print("📦 All module requirements appended successfully!")
+
+    def create_vscode_workspace(self):
+        # For the early stage of the framework development,
+        # it will be better if we add all modules to the workspace to real time edit them while using them.
+        # This is not recommended when the framework is in production use as it somehow defeats the purpose of having isolated modules.
+        # But I am the one man army who is single handedly developing this framework,
+        # I don't hate myself enough to not include this temporary workaround lol
+
+        print("📝 Creating VSCode workspace with all modules...")
+        
+        # Get the current project folder name
+        project_folder = os.path.basename(os.getcwd())
+        workspace_file = f"{project_folder}.code-workspace"
+        
+        try:
+            # Find all directories with .git folders and create workspace entries
+            result = subprocess.run(
+                ['find', '.', '-mindepth', '2', '-type', 'd', '-name', '.git'],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            if result.stdout.strip():
+                # Process the output to create workspace entries
+                git_dirs = result.stdout.strip().split('\n')
+                workspace_entries = []
+                
+                for git_dir in git_dirs:
+                    # Remove /.git suffix to get the module path
+                    module_path = git_dir.replace('/.git', '')
+                    workspace_entries.append(f'    {{ "path": "{module_path}" }}')
+                
+                # Create workspace content with proper formatting
+                workspace_content = f"""{{\n\t"folders": [\n\t\t{",\n".join(workspace_entries)}\n\t],\n\t"settings": {{}}\n}}"""
+
+                # Write workspace file
+                with open(workspace_file, 'w') as f:
+                    f.write(workspace_content)
+                
+                print(f"✅ Created VSCode workspace: {workspace_file}")
+                print(f"📁 Added {len(workspace_entries)} module(s) to workspace")
+            else:
+                print("⚠️  No git repositories found to add to workspace")
+                
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Error creating workspace: {e}")
+        except Exception as e:
+            print(f"❌ Unexpected error creating workspace: {str(e)}")
+
 
 class ModulesInitializer:
     """A class to handle the initialization of modules with dependency resolution."""
