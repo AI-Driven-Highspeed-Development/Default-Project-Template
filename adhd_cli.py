@@ -40,10 +40,9 @@ def init_project(args):
             return
     
     yaml_file = args.config if args.config else "init.yaml"
-    clone_dir = args.clone_dir if args.clone_dir else "clone_temp"
     
     try:
-        initializer = ProjectInitializer(yaml_file=yaml_file, clone_dir=clone_dir, force_update=force_update)
+        initializer = ProjectInitializer(yaml_file=yaml_file, force_update=force_update)
         print("✅ Project initialization completed successfully!")
     except Exception as e:
         print(f"❌ Project initialization failed: {str(e)}")
@@ -102,31 +101,36 @@ def show_module_info(args):
                 print(f"  • {module_info.name}")
             sys.exit(1)
         
-        # Display detailed module information
-        print(f"\n{'='*60}")
-        print(f"📦 MODULE INFORMATION: {found_module.name}")
-        print(f"{'='*60}")
-        print(f"📁 Path: {found_path}")
-        print(f"📂 Type: {found_module.type or 'Not specified'}")
-        print(f"🏷️ Version: {found_module.version}")
-        print(f"📃 Description: {found_module.description or 'No description available'}")
+        # Display detailed module information using table formatter
+        from framework.cli_format import TableFormatter, TableRow
+        
+        formatter = TableFormatter()
+        rows = [
+            TableRow("📁", "Path", found_path),
+            TableRow("📂", "Type", found_module.type or 'Not specified'),
+            TableRow("🏷️", "Version", found_module.version),
+            TableRow("📃", "Description", found_module.description or 'No description available')
+        ]
         
         if found_module.folder_path:
-            print(f"🎯 Target Path: {found_module.folder_path}")
+            rows.append(TableRow("🎯", "Target Path", found_module.folder_path))
         
         if found_module.requirements:
-            print(f"🔗 Requirements:")
-            for req in found_module.requirements:
-                print(f"   • {req}")
+            req_text = ", ".join(found_module.requirements)
+            if len(req_text) > 50:  # Truncate if too long
+                req_text = req_text[:47] + "..."
+            rows.append(TableRow("🔗", "Requirements", req_text))
         
         # Show features
         features = found_module.features
         if features:
-            print(f"🔧 Features: {', '.join(features)}")
+            features_text = ", ".join(features)
+            rows.append(TableRow("🔧", "Features", features_text))
         else:
-            print("🔧 Features: None")
+            rows.append(TableRow("🔧", "Features", "None"))
         
-        print(f"{'='*60}")
+        table = formatter.create_info_table(rows, f"📦 MODULE INFORMATION: {found_module.name}")
+        print(f"\n{table}")
         
     except Exception as e:
         print(f"❌ Failed to get module information: {str(e)}")
@@ -156,8 +160,6 @@ Examples:
     init_parser = subparsers.add_parser('init', help='Initialize a new ADHD project')
     init_parser.add_argument('--config', '-c', 
                            help='Path to YAML configuration file (default: init.yaml)')
-    init_parser.add_argument('--clone-dir', 
-                           help='Directory for temporary clones (default: clone_temp)')
     init_parser.add_argument('--force', '-f', action='store_true',
                            help='Force update all modules regardless of version (requires confirmation)')
     init_parser.set_defaults(func=init_project)

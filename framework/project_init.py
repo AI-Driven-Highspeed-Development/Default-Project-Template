@@ -432,7 +432,7 @@ class RepositoryCloner:
         init_data = self._fetch_remote_init_yaml(repo_url)
         
         if not init_data:
-            table.add_row(TableRow("⚠️  No init.yaml found, using default location"))
+            table.add_row(TableRow("⚠️  No init.yaml found, using default location"), -3)
             target_path = f"utils/{repo_name.lower().replace('-', '_')}"
         else:
             folder_path = init_data.get('folder_path', f"utils/{repo_name.lower().replace('-', '_')}")
@@ -440,7 +440,7 @@ class RepositoryCloner:
             table.add_row(TableRow(f"� Target: {target_path}"))
             
             if 'version' in init_data:
-                table.add_row(TableRow(f"🏷️  Version: {init_data['version']}"))
+                table.add_row(TableRow(f"🏷️  Version: {init_data['version']}", -3))
         
         # Check if target already exists
         if os.path.exists(target_path):
@@ -456,14 +456,14 @@ class RepositoryCloner:
                     table.add_row(TableRow(f"🆕 New: {new_version}"))
                     
                     if not self._should_update(existing_version, new_version):
-                        table.add_row(TableRow("⚠️  Keeping existing (newer/same version)"))
+                        table.add_row(TableRow("⚠️  Keeping existing (newer/same version)", -3))
                         print(f"\n{table.render('normal', 70)}")
                         return target_path  # Still return path for dependency tracking
                     else:
                         table.add_row(TableRow("✅ Updating to newer version"))
                         shutil.rmtree(target_path, ignore_errors=True)
                 else:
-                    table.add_row(TableRow("⚠️  Existing module found, keeping"))
+                    table.add_row(TableRow("⚠️  Existing module found, keeping", -3))
                     print(f"\n{table.render('normal', 70)}")
                     return target_path
         
@@ -472,7 +472,7 @@ class RepositoryCloner:
         
         # Clone repository
         table.add_row(TableRow("🔄 Cloning repository..."))
-        
+
         try:
             result = subprocess.run(
                 ['git', 'clone', repo_url, target_path],
