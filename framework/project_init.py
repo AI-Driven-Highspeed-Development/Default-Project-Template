@@ -1,17 +1,18 @@
-from typing import List
+from typing import List, Dict, Optional
 import yaml
 import os
 import subprocess
 import sys
 from pathlib import Path
 import shutil
+import requests
 from .modules_control import ModulesController
 from .cli_format import TableFormatter, TableRow, StaticPrintout
 
 class ProjectInitializer:
     """A class to handle the initialization of a project by cloning repositories."""
     
-    def __init__(self, yaml_file="init.yaml", clone_dir="clone_temp", force_update=False):
+    def __init__(self, yaml_file="init.yaml", force_update=False):
         StaticPrintout.project_init_header()
         print("📂 Creating project directory structure...")
         
@@ -22,25 +23,20 @@ class ProjectInitializer:
         
         self.yaml_loader = InitYamlLoader(yaml_file)
         repo_urls = self.yaml_loader.load_modules()
+        
         if repo_urls:
-            self.rc = RepositoryCloner(repo_urls, clone_dir)
-            self.modules_placer = ModulesPlacer(clone_dir, force_update=force_update)
-            # Pass the URL mappings from cloner to placer
-            self.modules_placer.set_url_mappings(self.rc.get_url_to_clone_path_mapping())
+            self.rc = RepositoryCloner(repo_urls, force_update=force_update)
+            modules_paths = self.rc.clone_all_repositories_recursive()
+            url_to_path_mapping = self.rc.get_url_to_path_mapping()
         else:
             print("\n⚠️  No repositories to clone.")
-            self.modules_placer = ModulesPlacer(clone_dir, force_update=force_update)
-        modules_paths = self.modules_placer.place_modules()
-        url_to_path_mapping = self.modules_placer.get_url_to_path_mapping()
+            modules_paths = []
+            url_to_path_mapping = {}
         
         # Use ModulesController to get better module information
         self.modules_controller = ModulesController()
         self.modules_initializer = ModulesInitializer(modules_paths, self.modules_controller, url_to_path_mapping)
         self.modules_initializer.initialize_modules()
-
-        print(f"\n🧹 Cleaning up temporary files...")
-        shutil.rmtree(clone_dir, ignore_errors=True)
-        print("✅ Cleanup complete")
         
         StaticPrintout.project_init_complete()
 
@@ -264,171 +260,7 @@ class ModulesInitializer:
         # Show final module status
         StaticPrintout.final_module_status_header()
         self.modules_controller.list_modules()
-                
 
-class ModulesPlacer:
-    """A class to handle placing modules in the appropriate directories."""
-    
-    def __init__(self, clone_dir="clone_temp", force_update=False):
-        self.clone_dir = clone_dir
-        self.modules = []
-        self.url_to_path_mapping = {}  # Track URL to path mappings for dependency resolution
-        self.force_update = force_update  # Force update regardless of version
-        
-    def get_url_to_path_mapping(self) -> dict:
-        """Get the URL to path mapping for dependency resolution."""
-        return self.url_to_path_mapping.copy()
-    
-    def set_url_mappings(self, clone_url_mappings: dict):
-        """Set initial URL mappings from the cloner."""
-        self.clone_url_mappings = clone_url_mappings
-        
-    def move_contents(self, module_dir: str, target_dir: str):
-        """Move contents of module_dir into target_dir."""
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir, exist_ok=True)
-        
-        for item in os.listdir(module_dir):
-            src = os.path.join(module_dir, item)
-            dst = os.path.join(target_dir, item)
-            if os.path.isdir(src):
-                shutil.copytree(src, dst, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src, dst)
-    
-    def place_modules(self) -> List[str]:
-        """Place cloned modules into the appropriate directories."""
-        modules_dir = [
-            os.path.join(self.clone_dir, dir)
-            for dir in os.listdir(self.clone_dir)
-            if os.path.isdir(os.path.join(self.clone_dir, dir))
-        ]
-                
-        if not modules_dir:
-            print("⚠️  No modules found to place.")
-            return []
-    
-        StaticPrintout.module_placement_header()
-        print(f"🔍 Found {len(modules_dir)} modules to place")
-        
-        for module_dir in modules_dir:
-            self._process_module(module_dir)
-
-        print(f"\n🎉 Module placement complete! Processed {len(self.modules)} modules.")
-        return self.modules
-
-    def _process_module(self, module_dir: str):
-        """Process a single module for placement."""
-        module_info = ModulesController.get_module_info_from_path(module_dir)
-        module_name = os.path.basename(module_dir)
-        
-        # Create table for module processing
-        table = TableFormatter()
-        table.set_title(f"📁 Processing: {module_name}")
-        
-        if not module_info:
-            table.add_row(TableRow("⚠️  No init.yaml found, skipping module"))
-            print(table.render("normal", 60))
-            return
-            
-        folder_path = module_info.folder_path
-        self._handle_module_placement(module_dir, folder_path, module_info, table)
-
-    def _handle_module_placement(self, module_dir: str, folder_path: str, module_info, table: TableFormatter):
-        """Handle the placement logic for a module."""
-        old_folder_exists = os.path.exists(folder_path)
-
-        if not old_folder_exists:
-            os.makedirs(folder_path, exist_ok=True)
-            table.add_row(TableRow(f"📂 Created directory: {folder_path}"))
-            
-        table.add_row(TableRow(f"🎯 Target: {folder_path}"))
-        table.add_row(TableRow(f"📦 Version: {module_info.version}"))
-        
-        if old_folder_exists:
-            self._handle_existing_module(module_dir, folder_path, module_info, table)
-        else:
-            self._place_new_module(module_dir, folder_path, table)
-        
-        print(table.render("normal", 80))
-
-    def _handle_existing_module(self, module_dir: str, folder_path: str, module_info, table: TableFormatter):
-        """Handle placement when module already exists."""
-        existing_module_info = ModulesController.get_module_info_from_path(folder_path)
-        
-        if not existing_module_info:
-            table.add_row(TableRow("⚠️  Module exists but no version info, skipping..."))
-            return
-            
-        existing_version = existing_module_info.version
-        new_version = module_info.version
-        
-        table.add_row(TableRow(f"🔍 Existing version: {existing_version}"))
-        table.add_row(TableRow(f"🆕 New version: {new_version}"))
-        
-        if self.force_update:
-            table.add_row(TableRow("⚡ Force mode: Updating regardless of version"))
-        
-        if self._should_replace_module(existing_version, new_version):
-            if self.force_update:
-                table.add_row(TableRow("🔄 Force replacing module..."))
-            else:
-                table.add_row(TableRow("🔄 Replacing with newer version..."))
-            try:
-                shutil.rmtree(folder_path)
-                os.makedirs(folder_path, exist_ok=True)
-                self.move_contents(module_dir, folder_path)
-                table.add_row(TableRow("✅ Successfully replaced module"))
-                self.modules.append(folder_path)
-                self._update_url_mapping(module_dir, folder_path)
-            except OSError as e:
-                table.add_row(TableRow(f"❌ Error replacing module: {str(e)}"))
-        else:
-            table.add_row(TableRow("⚠️  Keeping existing version (newer/same)"))
-
-    def _place_new_module(self, module_dir: str, folder_path: str, table: TableFormatter):
-        """Place a new module."""
-        try:
-            self.move_contents(module_dir, folder_path)
-            table.add_row(TableRow("✅ Successfully moved to target location"))
-            self.modules.append(folder_path)
-            self._update_url_mapping(module_dir, folder_path)
-        except OSError as e:
-            table.add_row(TableRow(f"❌ Error moving module: {str(e)}"))
-
-    def _update_url_mapping(self, module_dir: str, target_path: str):
-        """Update URL to path mapping when a module is placed."""
-        module_name = os.path.basename(module_dir)
-        
-        # Find the corresponding URL from clone mappings
-        if hasattr(self, 'clone_url_mappings'):
-            for url, clone_path in self.clone_url_mappings.items():
-                if os.path.basename(clone_path) == module_name:
-                    self.url_to_path_mapping[url] = target_path
-                    break
-
-    def _should_replace_module(self, existing_version: str, new_version: str) -> bool:
-        """
-        Compare two version strings and determine if we should replace the existing module.
-        Returns True if new_version is greater than existing_version, or if force_update is enabled.
-        """
-        # If force update is enabled, always replace
-        if self.force_update:
-            return True
-            
-        def parse_version(version_str: str) -> tuple:
-            """Parse version string into tuple of integers for comparison."""
-            try:
-                clean_version = version_str.lower().lstrip('v')
-                parts = clean_version.split('.')
-                return tuple(int(part) for part in parts[:3])
-            except (ValueError, AttributeError):
-                return (0, 0, 0)
-        
-        existing_parsed = parse_version(existing_version)
-        new_parsed = parse_version(new_version)
-        
-        return new_parsed > existing_parsed
 
 class InitYamlLoader(yaml.SafeLoader):
     """A class to handle loading and parsing the init.yaml configuration file."""
@@ -471,53 +303,65 @@ class InitYamlLoader(yaml.SafeLoader):
             return []
 
 class RepositoryCloner:
-    """A class to handle cloning repositories from a list of URLs with recursive dependency resolution."""
+    """A class to handle cloning repositories directly to their target locations using remote init.yaml files."""
     
-    def __init__(self, repo_urls: List[str] = [], clone_dir="clone_temp"):
+    def __init__(self, repo_urls: List[str], force_update: bool = False):
         self.repo_urls = repo_urls
-        self.clone_dir = clone_dir
+        self.force_update = force_update
         self.successful_clones = 0
         self.processed_repos = set()  # Track processed repositories to avoid infinite loops
-        self.url_to_clone_path = {}   # Track URL to clone path mappings
+        self.url_to_path_mapping = {}   # Track URL to final path mappings
         
-        # Create clone directory
-        Path(self.clone_dir).mkdir(exist_ok=True)
-        print(f"\n📁 Clone directory '{self.clone_dir}' ready.")
-        
-        # Clone repositories if URLs are provided
-        if self.repo_urls:
-            self.clone_all_repositories_recursive()
-    
-    def get_url_to_clone_path_mapping(self) -> dict:
-        """Get the URL to clone path mapping for dependency resolution."""
-        return self.url_to_clone_path.copy()
-    
-    def _format_error_for_table(self, error_msg: str, table_width: int) -> str:
-        """Format error message to fit in table, truncating if necessary."""
-        max_width = table_width - 4  # Account for borders and padding
-        if len(error_msg) <= max_width:
-            return error_msg
-        return error_msg[:max_width-3] + "..."
+    def get_url_to_path_mapping(self) -> Dict[str, str]:
+        """Get the URL to path mapping for dependency resolution."""
+        return self.url_to_path_mapping.copy()
     
     def _normalize_repo_url(self, repo_url: str) -> str:
         """Normalize repository URL to avoid duplicates with different formats."""
-        # Remove trailing .git and normalize case
         return repo_url.lower().rstrip('.git')
     
-    def _extract_dependencies_from_module(self, module_path: str) -> List[str]:
-        """Extract dependency URLs from a cloned module's init.yaml."""
-        module_info = ModulesController.get_module_info_from_path(module_path)
-        if module_info and module_info.requirements:
-            return module_info.requirements
+    def _convert_github_url_to_raw(self, repo_url: str) -> str:
+        """Convert GitHub repository URL to raw init.yaml URL."""
+        # Convert https://github.com/owner/repo.git to https://raw.githubusercontent.com/owner/repo/main/init.yaml
+        repo_url = repo_url.rstrip('.git')
+        if 'github.com' in repo_url:
+            raw_url = repo_url.replace('github.com', 'raw.githubusercontent.com') + '/main/init.yaml'
+            return raw_url
+        return None
+    
+    def _fetch_remote_init_yaml(self, repo_url: str) -> Optional[Dict]:
+        """Fetch and parse remote init.yaml file."""
+        raw_url = self._convert_github_url_to_raw(repo_url)
+        if not raw_url:
+            return None
+        
+        try:
+            response = requests.get(raw_url, timeout=10)
+            if response.status_code == 200:
+                return yaml.safe_load(response.text)
+            return None
+        except Exception:
+            return None
+    
+    def _extract_dependencies_from_init_yaml(self, init_data: Dict) -> List[str]:
+        """Extract dependency URLs from init.yaml data."""
+        if not init_data:
+            return []
+        
+        requirements = init_data.get('requirements', [])
+        if isinstance(requirements, str):
+            return [requirements]
+        elif isinstance(requirements, list):
+            return requirements
         return []
     
-    def clone_all_repositories_recursive(self):
+    def clone_all_repositories_recursive(self) -> List[str]:
         """Clone all repositories recursively, including their dependencies."""
         StaticPrintout.recursive_cloning_header()
         
-        # Start with initial repositories
         repos_to_process = list(self.repo_urls)
         all_discovered_repos = set(self._normalize_repo_url(url) for url in self.repo_urls)
+        cloned_paths = []
         
         print(f"🎯 Starting with {len(repos_to_process)} initial repositories")
         
@@ -535,66 +379,36 @@ class RepositoryCloner:
                 
                 # Skip if already processed
                 if normalized_url in self.processed_repos:
-                    print(f"\n⏭️  Repository already processed: {repo_url}")
+                    table = TableFormatter()
+                    table.set_title(f"⏭️  REPOSITORY {i:2d}/{len(current_batch):2d} (Level {level})")
+                    table.add_row(TableRow(f"� Repository: {repo_url.split('/')[-1].replace('.git', '')}"))
+                    table.add_row(TableRow("ℹ️  Status: Already processed"))
+                    print(f"\n{table.render('normal', 70)}")
                     continue
                 
                 # Mark as processed
                 self.processed_repos.add(normalized_url)
                 
-                # Extract repository name from URL for width calculation
-                repo_name = repo_url.split('/')[-1].replace('.git', '')
-                clone_path = os.path.join(self.clone_dir, repo_name)
-                
-                # Calculate dynamic width based on content
-                content_lines = [
-                    f"📦 CLONING REPOSITORY {i:2d}/{len(current_batch):2d} (Level {level})",
-                    f"🔗 Repository: {repo_name}",
-                    f"🌐 URL: {repo_url}",
-                    f"📍 Target: {clone_path}",
-                    "⚠️  Repository already exists, analyzing dependencies...",
-                    "🔄 Cloning repository...",
-                    "✅ Successfully cloned repository",
-                    "🔍 Scanning for dependencies..."
-                ]
-                
-                # Find the longest content line and add padding
-                max_content_width = max(len(line) for line in content_lines)
-                table_width = max(max_content_width + 4, 60)  # Minimum 60 chars, +4 for padding and borders
-                
-                print(f"\n┌{'─'*table_width}┐")
-                print(f"│ 📦 CLONING REPOSITORY {i:2d}/{len(current_batch):2d} (Level {level}){' '*(table_width-36-len(str(i))-len(str(len(current_batch)))-len(str(level)))} │")
-                print(f"├{'─'*table_width}┤")
-                
-                clone_success = self.clone_repository(repo_url, i, table_width, clone_path)
-                if clone_success:
+                clone_path = self._clone_single_repository(repo_url, i, len(current_batch), level)
+                if clone_path:
+                    cloned_paths.append(clone_path)
                     self.successful_clones += 1
-                
-                # Always check for dependencies, even if the repo already existed
-                print(f"│ 🔍 Scanning for dependencies...{' '*(table_width-33)} │")
-                dependencies = self._extract_dependencies_from_module(clone_path)
-                
-                if dependencies:
-                    print(f"│ 📋 Found {len(dependencies)} dependencies{' '*(table_width-24-len(str(len(dependencies))))} │")
-                    for j, dep_url in enumerate(dependencies, 1):
+                    
+                    # Get dependencies from the cloned repository
+                    dependencies = self._get_dependencies_from_cloned_repo(clone_path)
+                    
+                    # Process new dependencies
+                    for dep_url in dependencies:
                         normalized_dep = self._normalize_repo_url(dep_url)
                         if normalized_dep not in all_discovered_repos:
                             all_discovered_repos.add(normalized_dep)
                             repos_to_process.append(dep_url)
-                            dep_name = dep_url.split('/')[-1].replace('.git', '')
-                            print(f"│   {j:2d}. ➕ New: {dep_name:<{table_width-15}} │")
-                        else:
-                            dep_name = dep_url.split('/')[-1].replace('.git', '')
-                            print(f"│   {j:2d}. ✓ Known: {dep_name:<{table_width-17}} │")
-                else:
-                    print(f"│ ℹ️  No dependencies found{' '*(table_width-26)} │")
-                
-                print(f"└{'─'*table_width}┘")
             
             if repos_to_process:
                 print(f"\n🔄 {len(repos_to_process)} new dependencies discovered, continuing to level {level+1}...")
             else:
                 print(f"\n✅ No more dependencies found. Recursion complete!")
-
+        
         # Final summary
         StaticPrintout.recursive_cloning_summary_header()
         print(f"🎯 Total repositories discovered: {len(all_discovered_repos)}")
@@ -602,50 +416,106 @@ class RepositoryCloner:
         print(f"📦 Successfully cloned: {self.successful_clones}")
         print(f"📈 Dependency levels processed: {level}")
         
-        return self.successful_clones
+        return cloned_paths
     
-    def clone_repository(self, repo_url, index=1, table_width=60, clone_path=None):
-        try:
-            # Extract repository name from URL if clone_path not provided
-            if clone_path is None:
-                repo_name = repo_url.split('/')[-1].replace('.git', '')
-                clone_path = os.path.join(self.clone_dir, repo_name)
+    def _clone_single_repository(self, repo_url: str, index: int, total: int, level: int) -> Optional[str]:
+        """Clone a single repository to its correct target location."""
+        table = TableFormatter()
+        table.set_title(f"📦 CLONING REPOSITORY {index:2d}/{total:2d} (Level {level})")
+        
+        repo_name = repo_url.split('/')[-1].replace('.git', '')
+        table.add_row(TableRow(f"📦 Repository: {repo_name}"))
+        table.add_row(TableRow(f"🌐 URL: {repo_url}"))
+        
+        # Fetch remote init.yaml to determine target location
+        table.add_row(TableRow("🔍 Fetching remote init.yaml..."))
+        init_data = self._fetch_remote_init_yaml(repo_url)
+        
+        if not init_data:
+            table.add_row(TableRow("⚠️  No init.yaml found, using default location"))
+            target_path = f"utils/{repo_name.lower().replace('-', '_')}"
+        else:
+            folder_path = init_data.get('folder_path', f"utils/{repo_name.lower().replace('-', '_')}")
+            target_path = folder_path
+            table.add_row(TableRow(f"� Target: {target_path}"))
+            
+            if 'version' in init_data:
+                table.add_row(TableRow(f"🏷️  Version: {init_data['version']}"))
+        
+        # Check if target already exists
+        if os.path.exists(target_path):
+            if self.force_update:
+                table.add_row(TableRow("⚡ Force mode: Removing existing module"))
+                shutil.rmtree(target_path, ignore_errors=True)
             else:
-                repo_name = os.path.basename(clone_path)
-            
-            print(f"│ 🔗 Repository: {repo_name:<{table_width-17}} │")
-            print(f"│ 🌐 URL: {repo_url:<{table_width-10}} │")
-            print(f"│ 📍 Target: {clone_path:<{table_width-13}} │")
-            print(f"├{'─'*table_width}┤")
-            
-            # Track URL to clone path mapping
-            self.url_to_clone_path[repo_url] = clone_path
-            
-            # Skip if already cloned (but still return True for dependency analysis)
-            if os.path.exists(clone_path):
-                print(f"│ ⚠️  Repository already exists, analyzing dependencies...{' '*(table_width-51)} │")
-                return True
-                
-            print(f"│ 🔄 Cloning repository...{' '*(table_width-26)} │")
+                existing_info = ModulesController.get_module_info_from_path(target_path)
+                if existing_info and init_data:
+                    existing_version = existing_info.version
+                    new_version = init_data.get('version', '0.0.1')
+                    table.add_row(TableRow(f"🔍 Existing: {existing_version}"))
+                    table.add_row(TableRow(f"🆕 New: {new_version}"))
+                    
+                    if not self._should_update(existing_version, new_version):
+                        table.add_row(TableRow("⚠️  Keeping existing (newer/same version)"))
+                        print(f"\n{table.render('normal', 70)}")
+                        return target_path  # Still return path for dependency tracking
+                    else:
+                        table.add_row(TableRow("✅ Updating to newer version"))
+                        shutil.rmtree(target_path, ignore_errors=True)
+                else:
+                    table.add_row(TableRow("⚠️  Existing module found, keeping"))
+                    print(f"\n{table.render('normal', 70)}")
+                    return target_path
+        
+        # Ensure target directory exists
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        
+        # Clone repository
+        table.add_row(TableRow("🔄 Cloning repository..."))
+        
+        try:
             result = subprocess.run(
-                ['git', 'clone', repo_url, clone_path],
+                ['git', 'clone', repo_url, target_path],
                 capture_output=True,
                 text=True,
                 check=True
             )
-            print(f"│ ✅ Successfully cloned repository{' '*(table_width-35)} │")
-            return True
+            table.add_row(TableRow("✅ Successfully cloned"))
+            self.url_to_path_mapping[repo_url] = target_path
+            print(f"\n{table.render('normal', 70)}")
+            return target_path
             
         except subprocess.CalledProcessError as e:
-            error_msg = f"❌ Clone failed: {str(e.stderr)}"
-            formatted_error = self._format_error_for_table(error_msg, table_width)
-            print(f"│ {formatted_error:<{table_width-2}} │")
-            return False
+            error_msg = str(e.stderr).strip() if e.stderr else "Unknown error"
+            table.add_row(TableRow(f"❌ Clone failed: {error_msg}"))
+            print(f"\n{table.render('normal', 70)}")
+            return None
         except Exception as e:
-            error_msg = f"❌ Unexpected error: {str(e)}"
-            formatted_error = self._format_error_for_table(error_msg, table_width)
-            print(f"│ {formatted_error:<{table_width-2}} │")
-            return False
+            table.add_row(TableRow(f"❌ Unexpected error: {str(e)}"))
+            print(f"\n{table.render('normal', 70)}")
+            return None
+    
+    def _get_dependencies_from_cloned_repo(self, repo_path: str) -> List[str]:
+        """Get dependencies from a cloned repository."""
+        module_info = ModulesController.get_module_info_from_path(repo_path)
+        if module_info and module_info.requirements:
+            return module_info.requirements
+        return []
+    
+    def _should_update(self, existing_version: str, new_version: str) -> bool:
+        """Compare version strings to determine if update is needed."""
+        def parse_version(version_str: str) -> tuple:
+            try:
+                clean_version = version_str.lower().lstrip('v')
+                parts = clean_version.split('.')
+                return tuple(int(part) for part in parts[:3])
+            except (ValueError, AttributeError):
+                return (0, 0, 0)
+        
+        existing_parsed = parse_version(existing_version)
+        new_parsed = parse_version(new_version)
+        
+        return new_parsed > existing_parsed
 
 if __name__ == "__main__":
     project_initializer = ProjectInitializer()
