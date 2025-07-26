@@ -15,6 +15,14 @@ from pathlib import Path
 # Add the current directory to Python path to allow imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# install requirements.txt with pip
+requirements_file = Path("requirements.txt")
+
+if requirements_file.exists():
+    print(f"📦 Installing python requirements from {requirements_file}...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
+                    check=True)
+
 from framework import (
     ProjectInitializer,
     ModulesRefresher,
@@ -42,15 +50,7 @@ def init_project(args):
     
     yaml_file = args.config if args.config else "init.yaml"
     
-    try:
-        # install requirements.txt with pip
-        requirements_file = Path(yaml_file).parent / "requirements.txt"
-
-        if requirements_file.exists():
-            print(f"📦 Installing python requirements from {requirements_file}...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
-                           check=True)
-            
+    try:            
         initializer = ProjectInitializer(yaml_file=yaml_file, force_update=force_update)
         print("✅ Project initialization completed successfully!")
     except Exception as e:
