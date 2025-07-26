@@ -37,8 +37,29 @@ class ProjectInitializer:
         self.modules_controller = ModulesController()
         self.modules_initializer = ModulesInitializer(modules_paths, self.modules_controller, url_to_path_mapping)
         self.modules_initializer.initialize_modules()
+        self.append_requirements()
         
         StaticPrintout.project_init_complete()
+
+    def append_requirements(self):
+        """Find all requirements.txt files in modules and append them to the main requirements.txt."""
+        print("📦 Appending requirements from modules...")
+        
+        requirements_file = Path("requirements.txt")
+        if not requirements_file.exists():
+            print("⚠️  No requirements.txt found, skipping append.")
+            return
+        
+        with open(requirements_file, 'a') as main_requirements:
+            for module_path in self.modules_controller.get_all_modules().keys():
+                module_requirements = Path(module_path) / "requirements.txt"
+                if module_requirements.exists():
+                    with open(module_requirements, 'r') as mod_req:
+                        content = mod_req.read()
+                        main_requirements.write(content + "\n")
+                        print(f"✅ Appended requirements from {module_path}")
+        
+        print("📦 All module requirements appended successfully!")
 
 class ModulesInitializer:
     """A class to handle the initialization of modules with dependency resolution."""
