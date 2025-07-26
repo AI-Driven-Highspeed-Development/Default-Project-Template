@@ -95,7 +95,7 @@ class ProjectInitializer:
                     workspace_entries.append(f'    {{ "path": "{module_path}" }}')
                 
                 # Create workspace content with proper formatting
-                workspace_content = f"""{{\n\t"folders": [\n\t\t{",\n".join(workspace_entries)}\n\t],\n\t"settings": {{}}\n}}"""
+                workspace_content = f"""{{\n\t"folders": [\n\t{",\n".join(workspace_entries)}\n\t\t],\n\t"settings": {{}}\n}}"""
 
                 # Write workspace file
                 with open(workspace_file, 'w') as f:
@@ -512,7 +512,7 @@ class RepositoryCloner:
             table.add_row(TableRow(f"� Target: {target_path}"))
             
             if 'version' in init_data:
-                table.add_row(TableRow(f"🏷️  Version: {init_data['version']}", -5))
+                table.add_row(TableRow(f"🏷️  Version: {init_data['version']}", -3))
         
         # Check if target already exists
         if os.path.exists(target_path):
