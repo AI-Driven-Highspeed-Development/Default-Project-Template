@@ -95,7 +95,7 @@ class ProjectInitializer:
                     workspace_entries.append(f'    {{ "path": "{module_path}" }}')
                 
                 # Create workspace content with proper formatting
-                workspace_content = f"""{{\n\t"folders": [\n\t{",\n".join(workspace_entries)}\n\t\t],\n\t"settings": {{}}\n}}"""
+                workspace_content = f"""{{\n\t"folders": [\n\t{",\n\t".join(workspace_entries)}\n\t],\n\t"settings": {{}}\n}}"""
 
                 # Write workspace file
                 with open(workspace_file, 'w') as f:
