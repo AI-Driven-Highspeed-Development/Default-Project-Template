@@ -7,6 +7,7 @@ project initialization, module management, and project refresh operations.
 """
 
 import argparse
+import subprocess
 import sys
 import os
 from pathlib import Path
@@ -42,6 +43,14 @@ def init_project(args):
     yaml_file = args.config if args.config else "init.yaml"
     
     try:
+        # install requirements.txt with pip
+        requirements_file = Path(yaml_file).parent / "requirements.txt"
+
+        if requirements_file.exists():
+            print(f"📦 Installing python requirements from {requirements_file}...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
+                           check=True)
+            
         initializer = ProjectInitializer(yaml_file=yaml_file, force_update=force_update)
         print("✅ Project initialization completed successfully!")
     except Exception as e:
