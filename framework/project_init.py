@@ -512,7 +512,7 @@ class RepositoryCloner:
             table.add_row(TableRow(f"� Target: {target_path}"))
             
             if 'version' in init_data:
-                table.add_row(TableRow(f"🏷️  Version: {init_data['version']}", -3))
+                table.add_row(TableRow(f"🏷️  Version: {init_data['version']}", -5))
         
         # Check if target already exists
         if os.path.exists(target_path):
