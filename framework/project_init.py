@@ -88,7 +88,7 @@ class ProjectInitializer:
             if result.stdout.strip():
                 # Process the output to create workspace entries
                 git_dirs = result.stdout.strip().split('\n')
-                git_dirs += "\n" + project_folder  # Include the current project folder
+                git_dirs.append("./.git")
                 workspace_entries = []
                 
                 for git_dir in git_dirs:
