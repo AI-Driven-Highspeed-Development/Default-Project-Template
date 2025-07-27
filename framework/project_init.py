@@ -76,8 +76,9 @@ class ProjectInitializer:
         workspace_file = f"{project_folder}.code-workspace"
         
         try:
+            result = project_folder + "\n"
             # Find all directories with .git folders and create workspace entries
-            result = subprocess.run(
+            result += subprocess.run(
                 ['find', '.', '-mindepth', '2', '-type', 'd', '-name', '.git'],
                 capture_output=True,
                 text=True,
