@@ -1,4 +1,4 @@
-# # Default Project Template for AI Driven Highspeed Development Framework
+# Default Project Template for AI Driven Highspeed Development Framework
 
 This is the default project template that gets cloned when creating new ADHD Framework projects.
 
