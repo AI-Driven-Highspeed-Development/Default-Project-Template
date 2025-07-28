@@ -29,6 +29,7 @@ from framework import (
     refresh_specific_module,
     get_modules_controller
 )
+from framework.install_requirements import find_and_install_requirements
 
 
 def init_project(args):
@@ -146,6 +147,22 @@ def show_module_info(args):
         sys.exit(1)
 
 
+def install_requirements(args):
+    """Install requirements from all requirements.txt files in the project."""
+    print("📦 Installing requirements from all requirements.txt files...")
+    
+    try:
+        success = find_and_install_requirements()
+        if success:
+            print("✅ Requirements installation completed successfully!")
+        else:
+            print("❌ Some requirements failed to install.")
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Requirements installation failed: {str(e)}")
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -160,6 +177,7 @@ Examples:
   %(prog)s refresh --module logger # Refresh specific module
   %(prog)s list                    # List all modules
   %(prog)s info --module logger    # Show info about specific module
+  %(prog)s req                      # Install all requirements.txt files in project
         """
     )
     
@@ -188,6 +206,10 @@ Examples:
     info_parser.add_argument('--module', '-m', required=True,
                             help='Module name to show information for')
     info_parser.set_defaults(func=show_module_info)
+    
+    # Install command
+    install_parser = subparsers.add_parser('req', help='Install requirements from all requirements.txt files')
+    install_parser.set_defaults(func=install_requirements)
     
     # Parse arguments
     args = parser.parse_args()
