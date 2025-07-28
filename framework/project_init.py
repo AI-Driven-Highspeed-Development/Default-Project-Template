@@ -37,7 +37,7 @@ class ProjectInitializer:
         self.modules_controller = ModulesController()
         self.modules_initializer = ModulesInitializer(modules_paths, self.modules_controller, url_to_path_mapping)
         self.modules_initializer.initialize_modules()
-        self.append_requirements()
+        # self.append_requirements()
         self.create_vscode_workspace()
 
         StaticPrintout.project_init_complete()
