@@ -47,10 +47,8 @@ class ProjectInitializer:
         print("📦 Appending requirements from modules...")
         
         requirements_file = Path("requirements.txt")
-        if not requirements_file.exists():
-            print("⚠️  No requirements.txt found, skipping append.")
-            return
-        
+        os.makedirs(requirements_file.parent, exist_ok=True)
+
         with open(requirements_file, 'a') as main_requirements:
             for module_path in self.modules_controller.get_all_modules().keys():
                 module_requirements = Path(module_path) / "requirements.txt"
