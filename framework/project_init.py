@@ -95,7 +95,8 @@ class ProjectInitializer:
                     workspace_entries.append(f'    {{ "path": "{module_path}" }}')
                 
                 # Create workspace content with proper formatting
-                workspace_content = f"""{{\n\t"folders": [\n\t{",\n\t".join(workspace_entries)}\n\t],\n\t"settings": {{}}\n}}"""
+                workspace_content = f"""{{\n\t"folders": [\n\t{",\n\t".join(workspace_entries)}\n\t],}}"""
+                workspace_content += """\n\t"settings": {\n\t\t"python.analysis.extraPaths": [\n\t\t\t"../../../",\n\t\t\t"../../",\n\t\t\t"../",\n\t\t]\n\t}\n}"""
 
                 # Write workspace file
                 with open(workspace_file, 'w') as f:
