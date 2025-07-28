@@ -97,7 +97,7 @@ class ProjectInitializer:
                 # Create workspace content with proper formatting
                 workspace_content = "{"
                 workspace_content += f"""\n\t"folders": [\n\t{",\n\t".join(workspace_entries)}\n\t],"""
-                workspace_content += """\n\t"settings": {\n\t\t"python.analysis.extraPaths": [\n\t\t\t"../../../",\n\t\t\t"../../",\n\t\t\t"../",\n\t\t]\n\t}\n}"""
+                workspace_content += """\n\t"settings": {\n\t\t"python.analysis.extraPaths": [\n\t\t\t"../../../",\n\t\t\t"../../",\n\t\t\t"../",\n\t\t]\n\t}"""
                 workspace_content += "\n}"
 
                 # Write workspace file
