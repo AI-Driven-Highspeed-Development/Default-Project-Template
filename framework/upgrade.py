@@ -25,12 +25,12 @@ class FrameworkUpgrader:
         self._load_config()
     
     def _load_config(self):
-        """Load configuration from init.yaml to get self-template-repo."""
+        """Load configuration from init.yaml to get template_repo."""
         yaml_file = YamlUtil.read_yaml(self.init_yaml_path)
-        self.self_template_repo = yaml_file.get('self-template-repo')
+        self.self_template_repo = yaml_file.get('template_repo')
 
         if not isinstance(self.self_template_repo, str):
-            raise ValueError("Invalid 'self-template-repo' format in init.yaml")
+            raise ValueError("Invalid 'template_repo' format in init.yaml")
     
     def _clone_template_repo(self) -> bool:
         """Clone the self-template repository to the temp directory."""
