@@ -1,4 +1,4 @@
 modules:
   - https://github.com/AI-Driven-Highspeed-Development/Config-Manager.git
 
-
+self-template-repo: https://github.com/AI-Driven-Highspeed-Development/Default-Project-Template.git

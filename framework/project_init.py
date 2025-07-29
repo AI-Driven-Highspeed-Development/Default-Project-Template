@@ -1,13 +1,12 @@
 from typing import List, Dict, Optional
-import yaml
 import os
 import subprocess
 import sys
 from pathlib import Path
 import shutil
-import requests
 from .modules_control import ModulesController
 from .cli_format import TableFormatter, TableRow, StaticPrintout
+from .yaml_util import YamlUtil, YamlFile
 
 class ProjectInitializer:
     """A class to handle the initialization of a project by cloning repositories."""
@@ -230,14 +229,6 @@ class ModulesInitializer:
             if url.lower().rstrip('.git') == normalized_url:
                 return path
         
-        # Try repository name matching as fallback
-        requirement_name = requirement_url.split('/')[-1].replace('.git', '')
-        
-        for url, path in self.url_to_path_mapping.items():
-            url_name = url.split('/')[-1].replace('.git', '')
-            if url_name.lower() == requirement_name.lower():
-                return path
-        
         return None
 
     def _perform_module_initialization(self, module_path: str, module_info, module_name: str) -> bool:
@@ -337,7 +328,7 @@ class ModulesInitializer:
         self.modules_controller.list_modules()
 
 
-class InitYamlLoader(yaml.SafeLoader):
+class InitYamlLoader:
     """A class to handle loading and parsing the init.yaml configuration file."""
     
     def __init__(self, yaml_file="init.yaml"):
@@ -353,29 +344,22 @@ class InitYamlLoader(yaml.SafeLoader):
         """
         StaticPrintout.configuration_loading_header()
         
-        try:
-            with open(self.yaml_file, 'r') as file:
-                data = yaml.safe_load(file)
-                self.modules = data.get('modules', [])
-                print(f"✅ Successfully loaded {len(self.modules)} repositories from {self.yaml_file}")
-                
-                if self.modules:
-                    print(f"\n📋 Repository List:")
-                    for i, repo in enumerate(self.modules, 1):
-                        repo_name = repo.split('/')[-1].replace('.git', '')
-                        print(f"   {i:2d}. 🔗 {repo_name}")
-                        print(f"       └─ {repo}")
-                
-                return self.modules
-        except FileNotFoundError:
-            print(f"❌ Error: Configuration file '{self.yaml_file}' not found.")
+        yaml_file = YamlUtil.read_yaml(self.yaml_file)
+        if yaml_file is None:
+            print(f"❌ Error: Configuration file '{self.yaml_file}' not found or invalid.")
             return []
-        except yaml.YAMLError as e:
-            print(f"❌ Error parsing YAML file: {e}")
-            return []
-        except Exception as e:
-            print(f"❌ Unexpected error reading {self.yaml_file}: {e}")
-            return []
+        
+        self.modules = yaml_file.get('modules', [])
+        print(f"✅ Successfully loaded {len(self.modules)} repositories from {self.yaml_file}")
+        
+        if self.modules:
+            print(f"\n📋 Repository List:")
+            for i, repo in enumerate(self.modules, 1):
+                repo_name = YamlUtil.get_repo_name(repo)
+                print(f"   {i:2d}. 🔗 {repo_name}")
+                print(f"       └─ {repo}")
+        
+        return self.modules
 
 class RepositoryCloner:
     """A class to handle cloning repositories directly to their target locations using remote init.yaml files."""
@@ -395,35 +379,20 @@ class RepositoryCloner:
         """Normalize repository URL to avoid duplicates with different formats."""
         return repo_url.lower().rstrip('.git')
     
-    def _convert_github_url_to_raw(self, repo_url: str) -> str:
-        """Convert GitHub repository URL to raw init.yaml URL."""
-        # Convert https://github.com/owner/repo.git to https://raw.githubusercontent.com/owner/repo/main/init.yaml
-        repo_url = repo_url.rstrip('.git')
-        if 'github.com' in repo_url:
-            raw_url = repo_url.replace('github.com', 'raw.githubusercontent.com') + '/main/init.yaml'
-            return raw_url
-        return None
-    
-    def _fetch_remote_init_yaml(self, repo_url: str) -> Optional[Dict]:
+    def _fetch_remote_init_yaml(self, repo_url: str) -> Optional[YamlFile]:
         """Fetch and parse remote init.yaml file."""
-        raw_url = self._convert_github_url_to_raw(repo_url)
+        raw_url = YamlUtil.construct_github_raw_url(repo_url, 'init.yaml')
         if not raw_url:
             return None
         
-        try:
-            response = requests.get(raw_url, timeout=10)
-            if response.status_code == 200:
-                return yaml.safe_load(response.text)
-            return None
-        except Exception:
-            return None
+        return YamlUtil.read_yaml_from_url(raw_url)
     
-    def _extract_dependencies_from_init_yaml(self, init_data: Dict) -> List[str]:
-        """Extract dependency URLs from init.yaml data."""
-        if not init_data:
+    def _extract_dependencies_from_init_yaml(self, init_yaml: YamlFile) -> List[str]:
+        """Extract dependency URLs from init.yaml file."""
+        if not init_yaml:
             return []
         
-        requirements = init_data.get('requirements', [])
+        requirements = init_yaml.get('requirements', [])
         if isinstance(requirements, str):
             return [requirements]
         elif isinstance(requirements, list):
@@ -456,7 +425,7 @@ class RepositoryCloner:
                 if normalized_url in self.processed_repos:
                     table = TableFormatter()
                     table.set_title(f"⏭️  REPOSITORY {i:2d}/{len(current_batch):2d} (Level {level})")
-                    table.add_row(TableRow(f"� Repository: {repo_url.split('/')[-1].replace('.git', '')}"))
+                    table.add_row(TableRow(f"📦 Repository: {YamlUtil.get_repo_name(repo_url) or 'Unknown'}"))
                     table.add_row(TableRow("ℹ️  Status: Already processed"))
                     print(f"\n{table.render('normal', 70)}")
                     continue
@@ -498,7 +467,7 @@ class RepositoryCloner:
         table = TableFormatter()
         table.set_title(f"📦 CLONING REPOSITORY {index:2d}/{total:2d} (Level {level})")
         
-        repo_name = repo_url.split('/')[-1].replace('.git', '')
+        repo_name = YamlUtil.get_repo_name(repo_url) or 'unknown'
         table.add_row(TableRow(f"📦 Repository: {repo_name}"))
         table.add_row(TableRow(f"🌐 URL: {repo_url}"))
         
@@ -512,10 +481,10 @@ class RepositoryCloner:
         else:
             folder_path = init_data.get('folder_path', f"utils/{repo_name.lower().replace('-', '_')}")
             target_path = folder_path
-            table.add_row(TableRow(f"� Target: {target_path}"))
+            table.add_row(TableRow(f"📁 Target: {target_path}"))
             
-            if 'version' in init_data:
-                table.add_row(TableRow(f"🏷️  Version: {init_data['version']}", -3))
+            if init_data.has_value('version'):
+                table.add_row(TableRow(f"🏷️  Version: {init_data.get('version')}", -3))
         
         # Check if target already exists
         if os.path.exists(target_path):

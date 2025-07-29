@@ -193,3 +193,46 @@ class StaticPrintout:
         print(f"   🔄 Cycle: {' → '.join(cycle_names)}")
         print(f"   🛑 Breaking cycle at {module_name}")
         print(f"   ℹ️  Will attempt to initialize {module_name} without its dependencies")
+    
+    @staticmethod
+    def framework_upgrade_header():
+        """Print the framework upgrade header."""
+        print(f"\n{'='*60}")
+        print("🚀 FRAMEWORK UPGRADE")
+        print(f"{'='*60}")
+        print("Upgrading from self-template repository")
+        print(f"{'='*60}")
+    
+    @staticmethod
+    def upgrade_summary_header():
+        """Print the upgrade summary header."""
+        print(f"\n{'='*60}")
+        print("📊 UPGRADE SUMMARY")
+        print(f"{'='*60}")
+    
+    @staticmethod
+    def upgrade_success_message():
+        """Print upgrade success message."""
+        print("🎉 Framework upgrade completed successfully!")
+        print()
+        print("✅ Upgraded components:")
+        print("   • Framework directory (framework/)")
+        print("   • CLI script (adhd_cli.py)")
+        print()
+        print("💡 What's next:")
+        print("   • Check for any new dependencies in requirements.txt")
+        print("   • Run 'python adhd_cli.py req' to install new requirements")
+        print("   • Test your project to ensure everything works")
+        print(f"{'='*60}")
+    
+    @staticmethod
+    def upgrade_failure_message():
+        """Print upgrade failure message."""
+        print("❌ Framework upgrade failed!")
+        print()
+        print("🔄 Troubleshooting:")
+        print("   • Check your internet connection")
+        print("   • Verify the self-template-repo URL in init.yaml")
+        print("   • Ensure you have git installed and accessible")
+        print("   • Check that you have write permissions in this directory")
+        print(f"{'='*60}")

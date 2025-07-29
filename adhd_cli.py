@@ -30,6 +30,7 @@ from framework import (
     get_modules_controller
 )
 from framework.install_requirements import find_and_install_requirements
+from framework.upgrade import upgrade_framework
 
 
 def init_project(args):
@@ -147,6 +148,35 @@ def show_module_info(args):
         sys.exit(1)
 
 
+def upgrade_framework_cmd(args):
+    """Upgrade the framework from the self-template repository."""
+    print("🚀 Upgrading ADHD Framework...")
+    
+    # Handle no-backup flag
+    create_backup = not args.no_backup
+    
+    if not create_backup:
+        print("\n⚠️  WARNING: No backup will be created!")
+        print("   Your current framework and CLI files will be overwritten.")
+        response = input("   Are you sure you want to continue? (yes/no): ")
+        if response.lower() not in ['yes', 'y']:
+            print("❌ Upgrade cancelled.")
+            return
+    
+    yaml_file = args.config if args.config else "init.yaml"
+    
+    try:
+        success = upgrade_framework(yaml_file, create_backup)
+        if success:
+            print("✅ Framework upgrade completed successfully!")
+        else:
+            print("❌ Framework upgrade failed.")
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Framework upgrade failed: {str(e)}")
+        sys.exit(1)
+
+
 def install_requirements(args):
     """Install requirements from all requirements.txt files in the project."""
     print("📦 Installing requirements from all requirements.txt files...")
@@ -178,6 +208,8 @@ Examples:
   %(prog)s list                    # List all modules
   %(prog)s info --module logger    # Show info about specific module
   %(prog)s req                      # Install all requirements.txt files in project
+  %(prog)s upgrade                 # Upgrade framework from self-template repository
+  %(prog)s upgrade --no-backup     # Upgrade without creating backup
         """
     )
     
@@ -210,6 +242,14 @@ Examples:
     # Install command
     install_parser = subparsers.add_parser('req', help='Install requirements from all requirements.txt files')
     install_parser.set_defaults(func=install_requirements)
+    
+    # Upgrade command
+    upgrade_parser = subparsers.add_parser('upgrade', help='Upgrade framework from self-template repository')
+    upgrade_parser.add_argument('--config', '-c', 
+                              help='Path to YAML configuration file (default: init.yaml)')
+    upgrade_parser.add_argument('--no-backup', action='store_true',
+                              help='Skip creating backup before upgrade (requires confirmation)')
+    upgrade_parser.set_defaults(func=upgrade_framework_cmd)
     
     # Parse arguments
     args = parser.parse_args()

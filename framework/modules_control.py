@@ -1,8 +1,8 @@
 import os
-import yaml
 from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
+from .yaml_util import YamlUtil, YamlFile
 
 @dataclass
 class ModuleInfo:
@@ -81,27 +81,17 @@ class ModulesController:
         # Try to read init.yaml for additional information
         init_yaml_path = os.path.join(module_path, "init.yaml")
         if os.path.exists(init_yaml_path):
-            try:
-                with open(init_yaml_path, 'r') as file:
-                    yaml_data = yaml.safe_load(file)
-                    if yaml_data:
-                        # Update module info with YAML data
-                        module_info.folder_path = yaml_data.get("folder_path", "")
-                        module_info.type = yaml_data.get("type", "")
-                        module_info.version = yaml_data.get("version", "0.0.1")
-                        module_info.description = yaml_data.get("description", "")
-                        
-                        # Handle requirements (can be list or single string)
-                        requirements = yaml_data.get("requirements", [])
-                        if isinstance(requirements, str):
-                            module_info.requirements = [requirements]
-                        elif isinstance(requirements, list):
-                            module_info.requirements = requirements
-                        else:
-                            module_info.requirements = []
-                            
-            except Exception as e:
-                print(f"Warning: Failed to read init.yaml for {module_path}: {e}")
+            yaml_file = YamlUtil.read_yaml(init_yaml_path)
+            if yaml_file:
+                # Update module info with YAML data
+                module_info.folder_path = yaml_file.get("folder_path", "")
+                module_info.type = yaml_file.get("type", "")
+                module_info.version = yaml_file.get("version", "0.0.1")
+                module_info.description = yaml_file.get("description", "")
+                
+                # Handle requirements (can be list or single string)
+                requirements = yaml_file.get("requirements", [])
+                module_info.requirements = requirements if isinstance(requirements, list) else [requirements]
         
         return module_info
     
