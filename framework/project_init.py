@@ -206,7 +206,7 @@ class ModulesInitializer:
             dependency_path = self._resolve_dependency_path(requirement_url)
             
             if not dependency_path:
-                print(f"   ⚠️  Dependency not found: {requirement_url}")
+                print(f"   ⚠️  Dependency skipped: {requirement_url}")
                 continue
             
             if not self._initialize_module_with_dependencies(dependency_path, all_modules_info):

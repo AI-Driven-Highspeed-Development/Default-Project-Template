@@ -58,7 +58,7 @@ class ModulesController:
         """Scan a specific directory for modules."""
         for item in os.listdir(directory):
             item_path = os.path.join(directory, item)
-            if os.path.isdir(item_path):
+            if os.path.isdir(item_path) and not item.startswith('_') and not item.startswith('__') and not item.startswith('.'):
                 module_info = ModulesController.get_module_info_from_path(item_path)
                 if module_info:
                     self.modules_info[item_path] = module_info
