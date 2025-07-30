@@ -476,15 +476,21 @@ class RepositoryCloner:
         init_data = self._fetch_remote_init_yaml(repo_url)
         
         if not init_data:
-            table.add_row(TableRow("⚠️  No init.yaml found, using default location"), -3)
-            target_path = f"utils/{repo_name.lower().replace('-', '_')}"
-        else:
-            folder_path = init_data.get('folder_path', f"utils/{repo_name.lower().replace('-', '_')}")
-            target_path = folder_path
-            table.add_row(TableRow(f"📁 Target: {target_path}"))
+            table.add_row(TableRow("❌ No init.yaml found, skipping module"))
+            print(f"\n{table.render('normal', 70)}")
+            return None
+        
+        folder_path = init_data.get('folder_path')
+        if not folder_path:
+            table.add_row(TableRow("❌ No folder_path specified in init.yaml, skipping module"))
+            print(f"\n{table.render('normal', 70)}")
+            return None
             
-            if init_data.has_value('version'):
-                table.add_row(TableRow(f"🏷️  Version: {init_data.get('version')}", -3))
+        target_path = folder_path
+        table.add_row(TableRow(f"📁 Target: {target_path}"))
+        
+        if init_data.has_value('version'):
+            table.add_row(TableRow(f"🏷️  Version: {init_data.get('version')}"))
         
         # Check if target already exists
         if os.path.exists(target_path):
