@@ -19,12 +19,12 @@ class FrameworkUpgrader:
     
     def __init__(self, init_yaml_path: str = "init.yaml"):
         self.init_yaml_path = init_yaml_path
-        self.temp_dir = "update"
+        self.temp_dir = "temp_upgrade"
         self.current_dir = Path.cwd()
         self.self_template_repo = None
-        self._load_config()
+        self._load_yaml()
     
-    def _load_config(self):
+    def _load_yaml(self):
         """Load configuration from init.yaml to get template_repo."""
         yaml_file = YamlUtil.read_yaml(self.init_yaml_path)
         self.self_template_repo = yaml_file.get('template_repo')
@@ -85,9 +85,9 @@ class FrameworkUpgrader:
             print(f"❌ Failed to create backup: {str(e)}")
             return False
     
-    def _update_framework(self) -> bool:
+    def _upgrade_framework(self) -> bool:
         """Replace the framework directory with the new one."""
-        print("🔄 Updating framework directory...")
+        print("🔄 Upgrading framework directory...")
         
         try:
             source_framework = Path(self.temp_dir) / "framework"
@@ -105,18 +105,18 @@ class FrameworkUpgrader:
             # Copy new framework directory
             shutil.copytree(source_framework, target_framework)
             print("   📁 Copied new framework directory")
-            
-            print("✅ Framework directory updated successfully")
+
+            print("✅ Framework directory upgraded successfully")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to update framework: {str(e)}")
+            print(f"❌ Failed to upgrade framework: {str(e)}")
             return False
     
-    def _update_cli(self) -> bool:
+    def _upgrade_cli(self) -> bool:
         """Replace the adhd_cli.py file with the new one."""
-        print("🔄 Updating CLI file...")
-        
+        print("🔄 Upgrading CLI file...")
+
         try:
             source_cli = Path(self.temp_dir) / "adhd_cli.py"
             target_cli = Path("adhd_cli.py")
@@ -132,12 +132,12 @@ class FrameworkUpgrader:
             
             shutil.copy2(source_cli, target_cli)
             print("   📄 Copied new CLI file")
-            
-            print("✅ CLI file updated successfully")
+
+            print("✅ CLI file upgraded successfully")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to update CLI: {str(e)}")
+            print(f"❌ Failed to upgrade CLI: {str(e)}")
             return False
     
     def _cleanup_temp_dir(self):
@@ -192,12 +192,12 @@ class FrameworkUpgrader:
                     print("⚠️  Backup failed, but continuing with upgrade...")
             
             # Step 3: Update framework directory
-            if not self._update_framework():
+            if not self._upgrade_framework():
                 self._display_upgrade_summary(False)
                 return False
             
             # Step 4: Update CLI file
-            if not self._update_cli():
+            if not self._upgrade_cli():
                 self._display_upgrade_summary(False)
                 return False
             
