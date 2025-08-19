@@ -215,3 +215,5 @@ clone_temp/
 managers/
 utils/
 plugins/
+
+.config.backup/
