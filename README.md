@@ -137,21 +137,6 @@ python adhd_cli.py --help
 python adhd_cli.py init --help
 ```
 
-### Direct Script Usage (Legacy)
-
-You can still use the scripts directly if needed:
-
-```bash
-# Initialize project
-python framework/project_init.py
-
-# Refresh all modules
-python framework/project_refresh.py
-
-# Refresh specific module
-python framework/project_refresh.py module_name
-```
-
 ## Configuration
 
 Create an `init.yaml` file in your project root to specify modules to install:
