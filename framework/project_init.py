@@ -23,8 +23,12 @@ class ProjectInitializer:
         self.yaml_loader = InitYamlLoader(yaml_file)
         repo_urls = self.yaml_loader.load_modules()
         
+        # Optional SSH support for private repos via env flags
+        use_ssh = os.environ.get("ADHD_USE_SSH", "0").strip() in ("1", "true", "yes", "on")
+        ssh_key = os.environ.get("ADHD_SSH_KEY")
+
         if repo_urls:
-            self.rc = RepositoryCloner(repo_urls, force_update=force_update)
+            self.rc = RepositoryCloner(repo_urls, force_update=force_update, use_ssh=use_ssh, ssh_key=ssh_key)
             modules_paths = self.rc.clone_all_repositories_recursive()
             url_to_path_mapping = self.rc.get_url_to_path_mapping()
         else:
@@ -364,12 +368,16 @@ class InitYamlLoader:
 class RepositoryCloner:
     """A class to handle cloning repositories directly to their target locations using remote init.yaml files."""
     
-    def __init__(self, repo_urls: List[str], force_update: bool = False):
+    def __init__(self, repo_urls: List[str], force_update: bool = False, use_ssh: bool = False, ssh_key: Optional[str] = None):
         self.repo_urls = repo_urls
         self.force_update = force_update
+        self.use_ssh = use_ssh
+        self.ssh_key = ssh_key
         self.successful_clones = 0
         self.processed_repos = set()  # Track processed repositories to avoid infinite loops
         self.url_to_path_mapping = {}   # Track URL to final path mappings
+        self._prepared_clones: Dict[str, str] = {}
+        self._clone_tmp_root = ".adhd_clone_tmp"
         
     def get_url_to_path_mapping(self) -> Dict[str, str]:
         """Get the URL to path mapping for dependency resolution."""
@@ -378,14 +386,65 @@ class RepositoryCloner:
     def _normalize_repo_url(self, repo_url: str) -> str:
         """Normalize repository URL to avoid duplicates with different formats."""
         return repo_url.lower().rstrip('.git')
+
+    def _to_ssh_url(self, repo_url: str) -> str:
+        """Convert a GitHub https URL to SSH form if needed."""
+        if repo_url.startswith(("git@", "ssh://")):
+            return repo_url
+        if "github.com" in repo_url:
+            url = repo_url.replace("https://", "").replace("http://", "").rstrip("/")
+            if url.endswith(".git"):
+                url = url[:-4]
+            parts = url.split("/")
+            if len(parts) >= 3:
+                org, repo = parts[1], parts[2]
+                return f"git@github.com:{org}/{repo}.git"
+        return repo_url
+
+    def _git_env(self) -> dict:
+        env = os.environ.copy()
+        if self.ssh_key:
+            env["GIT_SSH_COMMAND"] = f"ssh -i {self.ssh_key} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+        return env
+
+    def _clone_to_temp(self, repo_url: str) -> Optional[str]:
+        os.makedirs(self._clone_tmp_root, exist_ok=True)
+        repo_name = YamlUtil.get_repo_name(repo_url) or "repo"
+        tmp_path = os.path.join(self._clone_tmp_root, f"{repo_name}")
+        shutil.rmtree(tmp_path, ignore_errors=True)
+        ssh_url = self._to_ssh_url(repo_url)
+        try:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", ssh_url, tmp_path],
+                capture_output=True,
+                text=True,
+                check=True,
+                env=self._git_env(),
+            )
+            return tmp_path
+        except subprocess.CalledProcessError:
+            return None
+
+    def _cleanup_temp_clones(self):
+        shutil.rmtree(self._clone_tmp_root, ignore_errors=True)
     
     def _fetch_remote_init_yaml(self, repo_url: str) -> Optional[YamlFile]:
         """Fetch and parse remote init.yaml file."""
         raw_url = YamlUtil.construct_github_raw_url(repo_url, 'init.yaml')
-        if not raw_url:
-            return None
-        
-        return YamlUtil.read_yaml_from_url(raw_url)
+        if raw_url:
+            data = YamlUtil.read_yaml_from_url(raw_url)
+            if data:
+                return data
+        # Fallback for private repos via SSH shallow clone
+        if self.use_ssh or repo_url.startswith(("git@", "ssh://")):
+            tmp = self._clone_to_temp(repo_url)
+            if tmp:
+                yaml_path = Path(tmp) / "init.yaml"
+                local_yaml = YamlUtil.read_yaml(str(yaml_path)) if yaml_path.exists() else None
+                if local_yaml:
+                    self._prepared_clones[self._normalize_repo_url(repo_url)] = tmp
+                    return local_yaml
+        return None
     
     def _extract_dependencies_from_init_yaml(self, init_yaml: YamlFile) -> List[str]:
         """Extract dependency URLs from init.yaml file."""
@@ -459,6 +518,8 @@ class RepositoryCloner:
         print(f"✅ Successfully processed: {len(self.processed_repos)}")
         print(f"📦 Successfully cloned: {self.successful_clones}")
         print(f"📈 Dependency levels processed: {level}")
+        # Cleanup temp clones
+        self._cleanup_temp_clones()
         
         return cloned_paths
     
@@ -520,15 +581,31 @@ class RepositoryCloner:
         # Ensure target directory exists
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         
-        # Clone repository
-        table.add_row(TableRow("🔄 Cloning repository..."))
+        # Clone repository or move prepared temp clone
+        normalized_url = self._normalize_repo_url(repo_url)
+        if normalized_url in self._prepared_clones:
+            table.add_row(TableRow("🚚 Moving prepared SSH clone to target..."))
+            tmp_path = self._prepared_clones.pop(normalized_url)
+            try:
+                shutil.move(tmp_path, target_path)
+                table.add_row(TableRow("✅ Successfully placed module"))
+                self.url_to_path_mapping[repo_url] = target_path
+                print(f"\n{table.render('normal', 70)}")
+                return target_path
+            except Exception as e:
+                table.add_row(TableRow(f"❌ Move failed: {str(e)}"))
+                print(f"\n{table.render('normal', 70)}")
+                return None
 
+        table.add_row(TableRow("🔄 Cloning repository..."))
+        clone_url = self._to_ssh_url(repo_url) if (self.use_ssh or repo_url.startswith(("git@", "ssh://"))) else repo_url
         try:
-            result = subprocess.run(
-                ['git', 'clone', repo_url, target_path],
+            subprocess.run(
+                ['git', 'clone', clone_url, target_path],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                env=self._git_env(),
             )
             table.add_row(TableRow("✅ Successfully cloned"))
             self.url_to_path_mapping[repo_url] = target_path
