@@ -15,14 +15,6 @@ from pathlib import Path
 # Add the current directory to Python path to allow imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# install requirements.txt with pip
-requirements_file = Path("requirements.txt")
-
-if requirements_file.exists():
-    print(f"📦 Installing python requirements from {requirements_file}...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
-                    check=True)
-
 from framework import (
     ProjectInitializer,
     ModulesRefresher,
@@ -36,6 +28,12 @@ from framework.upgrade import upgrade_framework
 def init_project(args):
     """Initialize a new ADHD project."""
     print("🚀 Initializing ADHD project...")
+    requirements_file = Path("requirements.txt")
+
+    if requirements_file.exists():
+        print(f"📦 Installing python requirements from {requirements_file}...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
+                    check=True)
     
     # Handle force flag with confirmation
     force_update = False
