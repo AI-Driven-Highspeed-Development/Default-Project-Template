@@ -78,6 +78,13 @@ class FrameworkUpgrader:
                 shutil.copy2("adhd_cli.py", backup_dir / "adhd_cli.py")
                 print(f"   📄 CLI backed up to {backup_dir}/adhd_cli.py")
             
+            # Backup .github/copilot-instructions.md if present
+            copilot_src = Path(".github") / "copilot-instructions.md"
+            if copilot_src.exists():
+                (backup_dir / ".github").mkdir(parents=True, exist_ok=True)
+                shutil.copy2(copilot_src, backup_dir / ".github" / "copilot-instructions.md")
+                print(f"   📄 Copilot instructions backed up to {backup_dir}/.github/copilot-instructions.md")
+            
             print(f"✅ Backup created in {backup_dir}")
             return True
             
@@ -87,57 +94,67 @@ class FrameworkUpgrader:
     
     def _upgrade_framework(self) -> bool:
         """Replace the framework directory with the new one."""
-        print("🔄 Upgrading framework directory...")
-        
-        try:
-            source_framework = Path(self.temp_dir) / "framework"
-            target_framework = Path("framework")
-            
-            if not source_framework.exists():
-                print(f"❌ Framework directory not found in cloned repository")
-                return False
-            
-            # Remove current framework directory
-            if target_framework.exists():
-                shutil.rmtree(target_framework)
-                print("   🗑️  Removed old framework directory")
-            
-            # Copy new framework directory
-            shutil.copytree(source_framework, target_framework)
-            print("   📁 Copied new framework directory")
-
-            print("✅ Framework directory upgraded successfully")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Failed to upgrade framework: {str(e)}")
-            return False
+        return self._upgrade_path(
+            source_rel=Path("framework"),
+            target=Path("framework"),
+            is_dir=True,
+            human_name="Framework directory",
+        )
     
     def _upgrade_cli(self) -> bool:
         """Replace the adhd_cli.py file with the new one."""
-        print("🔄 Upgrading CLI file...")
+        return self._upgrade_path(
+            source_rel=Path("adhd_cli.py"),
+            target=Path("adhd_cli.py"),
+            is_dir=False,
+            human_name="CLI file",
+        )
+    
+    def _upgrade_copilot_instructions(self) -> bool:
+        """Replace the .github/copilot-instructions.md file with the new one."""
+        return self._upgrade_path(
+            source_rel=Path(".github") / "copilot-instructions.md",
+            target=Path(".github") / "copilot-instructions.md",
+            is_dir=False,
+            human_name="Copilot instructions",
+        )
 
+    def _upgrade_path(self, source_rel: Path, target: Path, is_dir: bool, human_name: str) -> bool:
+        """Generic upgrade helper to replace a file or directory from the template clone.
+
+        Args:
+            source_rel: Path relative to temp clone root (self.temp_dir)
+            target: Absolute or project-relative path to replace
+            is_dir: Whether the path is a directory
+            human_name: Human-readable label for logs
+        """
+        print(f"🔄 Upgrading {human_name}...")
         try:
-            source_cli = Path(self.temp_dir) / "adhd_cli.py"
-            target_cli = Path("adhd_cli.py")
-            
-            if not source_cli.exists():
-                print(f"❌ CLI file not found in cloned repository")
+            source = Path(self.temp_dir) / source_rel
+            if not source.exists():
+                print(f"❌ {human_name} not found in cloned repository")
                 return False
-            
-            # Replace CLI file
-            if target_cli.exists():
-                target_cli.unlink()
-                print("   🗑️  Removed old CLI file")
-            
-            shutil.copy2(source_cli, target_cli)
-            print("   📄 Copied new CLI file")
 
-            print("✅ CLI file upgraded successfully")
+            if is_dir:
+                # Replace directory
+                if target.exists():
+                    shutil.rmtree(target)
+                    print(f"   🗑️  Removed old {human_name.lower()}")
+                shutil.copytree(source, target)
+                print(f"   📁 Copied new {human_name.lower()}")
+            else:
+                # Replace file
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    target.unlink()
+                    print(f"   🗑️  Removed old {human_name.lower()}")
+                shutil.copy2(source, target)
+                print(f"   📄 Copied new {human_name.lower()}")
+
+            print(f"✅ {human_name} upgraded successfully")
             return True
-            
         except Exception as e:
-            print(f"❌ Failed to upgrade CLI: {str(e)}")
+            print(f"❌ Failed to upgrade {human_name}: {str(e)}")
             return False
     
     def _cleanup_temp_dir(self):
@@ -198,6 +215,11 @@ class FrameworkUpgrader:
             
             # Step 4: Update CLI file
             if not self._upgrade_cli():
+                self._display_upgrade_summary(False)
+                return False
+            
+            # Step 5: Update Copilot instructions file
+            if not self._upgrade_copilot_instructions():
                 self._display_upgrade_summary(False)
                 return False
             
