@@ -5,35 +5,40 @@ ADHD CLI - Command Line Interface for AI-Driven High-speed Development Framework
 This CLI provides easy access to the ADHD framework's core functionality including
 project initialization, module management, and project refresh operations.
 """
-
+# Add the current directory to Python path to allow imports
 import argparse
 import subprocess
 import sys
 import os
 from pathlib import Path
-
-# Add the current directory to Python path to allow imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from framework import (
-    ProjectInitializer,
-    ModulesRefresher,
-    refresh_specific_module,
-    get_modules_controller
-)
-from framework.install_requirements import find_and_install_requirements
-from framework.upgrade import upgrade_framework
+def import_libs():
+    global ProjectInitializer, ModulesRefresher, refresh_specific_module, get_modules_controller, upgrade_framework, find_and_install_requirements
+
+    from framework import (
+        ProjectInitializer,
+        ModulesRefresher,
+        refresh_specific_module,
+        get_modules_controller
+    )
+    from framework.install_requirements import find_and_install_requirements
+    from framework.upgrade import upgrade_framework
+
+try:
+    import_libs()
+except ImportError as e:    
+    requirements_file = Path("requirements.txt")
+    if requirements_file.exists():
+        print(f"📦 Installing python requirements from {requirements_file}...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
+                    check=True)
+    import_libs()
 
 
 def init_project(args):
     """Initialize a new ADHD project."""
     print("🚀 Initializing ADHD project...")
-    requirements_file = Path("requirements.txt")
-
-    if requirements_file.exists():
-        print(f"📦 Installing python requirements from {requirements_file}...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
-                    check=True)
     
     # Handle force flag with confirmation
     force_update = False
