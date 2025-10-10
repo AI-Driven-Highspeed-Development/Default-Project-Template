@@ -213,4 +213,4 @@ managers/
 utils/
 plugins/
 
-.config.backup/
+.config.backup
