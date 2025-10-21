@@ -18,6 +18,7 @@ class ProjectInitializer:
         os.makedirs("managers", exist_ok=True)
         os.makedirs("utils", exist_ok=True)
         os.makedirs("plugins", exist_ok=True)
+        os.makedirs("mcps", exist_ok=True)
         print("✅ Directory structure ready")
         
         self.yaml_loader = InitYamlLoader(yaml_file)
