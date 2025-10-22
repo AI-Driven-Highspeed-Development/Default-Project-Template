@@ -218,6 +218,7 @@ class StaticPrintout:
         print("✅ Upgraded components:")
         print("   • Framework directory (framework/)")
         print("   • CLI script (adhd_cli.py)")
+        print("   • Copilot instructions (.github/copilot-instructions.md)")
         print()
         print("💡 What's next:")
         print("   • Check for any new dependencies in requirements.txt")
