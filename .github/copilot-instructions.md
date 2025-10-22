@@ -7,10 +7,10 @@ Core ADHD Framework project structure:
 
 - **framework/** - Core framework files (rarely modified)
 - **project/** - Application logic codebase
-- **managers/** - Manager modules (with agent_instruction.json in each)
-- **utils/** - Utility modules (with agent_instruction.json in each)
-- **plugins/** - Plugin modules (with agent_instruction.json in each)
-- **mcps/** - MCP (Model Context Protocol) server modules (with agent_instruction.json in each)
+- **managers/** - Manager modules
+- **utils/** - Utility modules
+- **plugins/** - Plugin modules
+- **mcps/** - MCP (Model Context Protocol) server modules
 - **adhd_cli.py** - Main CLI entry point for framework commands
 - **app.py** - Main application entry point
 
