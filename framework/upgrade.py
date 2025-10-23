@@ -111,13 +111,22 @@ class FrameworkUpgrader:
         )
     
     def _upgrade_copilot_instructions(self) -> bool:
-        """Replace the .github/copilot-instructions.md file with the new one."""
-        return self._upgrade_path(
+        """Replace the Copilot instructions file and .github/instructions directory."""
+        copilot_ok = self._upgrade_path(
             source_rel=Path(".github") / "copilot-instructions.md",
             target=Path(".github") / "copilot-instructions.md",
             is_dir=False,
             human_name="Copilot instructions",
         )
+
+        instructions_ok = self._upgrade_path(
+            source_rel=Path(".github") / "instructions",
+            target=Path(".github") / "instructions",
+            is_dir=True,
+            human_name=".github instructions directory",
+        )
+
+        return copilot_ok and instructions_ok
 
     def _upgrade_path(self, source_rel: Path, target: Path, is_dir: bool, human_name: str) -> bool:
         """Generic upgrade helper to replace a file or directory from the template clone.
