@@ -238,6 +238,8 @@ class ModulesInitializer:
 
     def _perform_module_initialization(self, module_path: str, module_info, module_name: str) -> bool:
         """Perform the actual initialization of a module."""
+        self._clone_instructions(module_path)
+
         if not module_info or not module_info.has_init:
             print(f"   ℹ️  No initialization needed for {module_name}")
             return True
@@ -273,6 +275,38 @@ class ModulesInitializer:
         cycle_names = [os.path.basename(path) for path in cycle]
         
         StaticPrintout.circular_dependency_warning(cycle_names, module_name)
+
+    def _clone_instructions(self, module_path: str):
+        """Clone instructions for a module to .github/instructions/ (if applicable)."""
+        module_dir = Path(module_path)
+        module_name = module_dir.name
+        source_path = module_dir / f"{module_name}.instructions.md"
+
+        destination_dir = Path(".github") / "instructions"
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        if source_path.exists() and source_path.is_file():
+            destination_path = destination_dir / source_path.name
+
+            try:
+                if destination_path.exists():
+                    try:
+                        if destination_path.read_bytes() == source_path.read_bytes():
+                            print(f"   📚 Instructions already up to date for {module_name}")
+                            return True
+                    except OSError:
+                        # If comparison fails, fall back to overwriting
+                        print(f"   ⚠️  Could not compare instructions for {module_name}, defaulting to overwrite")
+
+                shutil.copy2(source_path, destination_path)
+                print(f"   📚 Cloned instructions to {destination_path}")
+                return True
+            except Exception as error:
+                print(f"   ⚠️  Failed to copy instructions for {module_name}: {error}")
+                return False
+
+        print(f"   ℹ️  No module instructions found for {module_name}, skipping.")
+        return False
 
     def _handle_initialization_error(self, module_name: str, error: subprocess.CalledProcessError):
         """Handle module initialization errors with detailed reporting."""
