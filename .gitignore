@@ -212,5 +212,6 @@ __marimo__/
 managers/
 utils/
 plugins/
+.adhd_clone_tmp/
 
 .config.backup
