@@ -212,6 +212,12 @@ __marimo__/
 managers/
 utils/
 plugins/
+cores/
+mcps/
+
 .adhd_clone_tmp/
+
+temp_test/
+temp_debug/
 
 .config.backup
